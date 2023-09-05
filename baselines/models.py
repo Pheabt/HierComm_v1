@@ -65,9 +65,7 @@ class Attention(nn.Module):
 
         x = self.tanh(self.affine1(x)).unsqueeze(0)
         h, _ = self.attn(x,x,x)
-
         xh = torch.cat([x.squeeze(0),h.squeeze(0)], dim=-1)
-
         z = self.tanh(self.affine2(xh))
         a = F.log_softmax(self.head(z), dim=-1)
         v = self.value_head(z)
@@ -75,14 +73,13 @@ class Attention(nn.Module):
 
 class Attention_Noise(nn.Module):
     def __init__(self, agent_config):
-        super(Attention, self).__init__()
+        super(Attention_Noise, self).__init__()
         self.args = argparse.Namespace(**agent_config)
         self.att_head = self.args.att_head
         self.hid_size = self.args.hid_size
         self.obs_shape = self.args.obs_shape
         self.n_actions = self.args.n_actions
         self.tanh = nn.Tanh()
-
 
         self.affine1 = nn.Linear(self.obs_shape, self.hid_size)
         self.attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
@@ -94,12 +91,11 @@ class Attention_Noise(nn.Module):
 
     def forward(self, x, info={}):
 
-        x = self.tanh(self.affine1(x)).unsqueeze(0)
-        xx = x[:, :6, :]
+        x = self.tanh(self.affine1(x))
+        xx = x[:6, :].unsqueeze(0)
         h, _ = self.attn(xx,xx,xx)
-
+        h = torch.cat([xx.squeeze(0),h.squeeze(0)], dim=0)
         xh = torch.cat([x.squeeze(0),h.squeeze(0)], dim=-1)
-
         z = self.tanh(self.affine2(xh))
         a = F.log_softmax(self.head(z), dim=-1)
         v = self.value_head(z)

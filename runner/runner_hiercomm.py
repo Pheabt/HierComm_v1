@@ -20,7 +20,7 @@ class RunnerHiercomm(Runner):
 
         #self.optimizer_agent_ac = Adam(params=self.agent.parameters(), lr=self.args.lr)
         self.optimizer_agent_ac = RMSprop(self.agent.agent.parameters(), lr = 0.003, alpha=0.97, eps=1e-6)
-        self.optimizer_god_ac = RMSprop(self.agent.god.parameters(), lr = 0.006, alpha=0.97, eps=1e-6)
+        self.optimizer_tie_ac = RMSprop(self.agent.tie.parameters(), lr = 0.006, alpha=0.97, eps=1e-6)
 
         self.n_nodes = int(self.n_agents * (self.n_agents - 1) / 2)
         self.interval = self.args.interval
@@ -30,13 +30,13 @@ class RunnerHiercomm(Runner):
 
     def optimizer_zero_grad(self):
         self.optimizer_agent_ac.zero_grad()
-        self.optimizer_god_ac.zero_grad()
+        self.optimizer_tie_ac.zero_grad()
 
 
 
     def optimizer_step(self):
         self.optimizer_agent_ac.step()
-        self.optimizer_god_ac.step()
+        self.optimizer_tie_ac.step()
 
 
     def compute_grad(self, batch):
@@ -99,11 +99,10 @@ class RunnerHiercomm(Runner):
         obs = self.env.get_obs()
 
         obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
-        graph = self.env.get_graph()
-        god_action_out, god_value = self.agent.god(obs_tensor, graph)
-        god_action = self.choose_action(god_action_out)
-        god_action = [god_action[0].reshape(1)]
-        g, set = self.agent.graph_partition(graph, god_action)
+
+        cmatrix = self.agent.agent_clustering(obs_tensor)
+        sets = self.agent.cmatrix_to_set(cmatrix)
+
 
         god_reward_list = []
         god_reward = np.zeros(1)
@@ -112,19 +111,17 @@ class RunnerHiercomm(Runner):
         num_group = 0
         episode_return = 0
         done = False
+
         while not done and step <= self.args.episode_length:
 
             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
             if step % self.interval == 0:
-                graph = self.env.get_graph()
-                god_action_out, god_value = self.agent.god(obs_tensor, graph)
-                god_action = self.choose_action(god_action_out)
-                god_action = [god_action[0].reshape(1)]
-                g, set = self.agent.graph_partition(graph, god_action)
+                cmatrix = self.agent.agent_clustering(obs_tensor)
+                sets = self.agent.cmatrix_to_set(cmatrix)
 
 
-            after_comm = self.agent.communicate(obs_tensor, g, set)
+            after_comm = self.agent.communicate(obs_tensor, sets)
             action_outs, values = self.agent.agent(after_comm)
             actions = self.choose_action(action_outs)
             rewards, done, env_info = self.env.step(actions)
@@ -154,14 +151,14 @@ class RunnerHiercomm(Runner):
             memory.append(trans)
 
 
-            if step % self.interval == 0:
-                god_trans = God_Transition(god_action_out, god_action, god_reward, god_value, god_episode_mask)
-                god_memory.append(god_trans)
+            # if step % self.interval == 0:
+            #     god_trans = God_Transition(god_action_out, god_action, god_reward, god_value, god_episode_mask)
+            #     god_memory.append(god_trans)
 
             obs = next_obs
             episode_return += int(np.sum(rewards))
             step += 1
-            num_group += len(set[1])
+            num_group += len(sets)
 
 
         log['episode_return'] = episode_return
