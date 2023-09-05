@@ -1,6 +1,6 @@
 from ._mpe_utils.simple_env import SimpleEnv, make_env
 from .scenarios.large_spread import Scenario
-from utils.to_parallel import parallel_wrapper_fn
+from .utils.to_parallel import parallel_wrapper_fn
 
 
 class raw_env(SimpleEnv):
@@ -9,7 +9,7 @@ class raw_env(SimpleEnv):
             0.0 <= local_ratio <= 1.0
         ), "local_ratio is a proportion. Must be between 0 and 1."
         scenario = Scenario()
-        world = scenario.make_world(groups=[3, 4, 5])
+        world = scenario.make_world(groups=[3, 3, 6])
         super().__init__(scenario, world, max_frames, local_ratio)
 
 

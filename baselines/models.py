@@ -75,7 +75,7 @@ class Attention(nn.Module):
 
 class Attention_Noise(nn.Module):
     def __init__(self, agent_config):
-        super(Attention_Noise, self).__init__()
+        super(Attention, self).__init__()
         self.args = argparse.Namespace(**agent_config)
         self.att_head = self.args.att_head
         self.hid_size = self.args.hid_size
@@ -83,52 +83,22 @@ class Attention_Noise(nn.Module):
         self.n_actions = self.args.n_actions
         self.tanh = nn.Tanh()
 
+
         self.affine1 = nn.Linear(self.obs_shape, self.hid_size)
-        self.attn = nn.MultiheadAttention(self.hid_size , num_heads=self.att_head, batch_first=True)
+        self.attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
         self.affine2 = nn.Linear(self.hid_size * 2, self.hid_size)
 
-        self.head = nn.Linear(self.hid_size, self.n_actions)
+        self.head = nn.Linear(self.hid_size,self.n_actions)
         self.value_head = nn.Linear(self.hid_size, 1)
 
-    # def forward(self, x, info={}):
-    #     x = self.tanh(self.affine1(x)).unsqueeze(0)
-    #     noise = torch.randn_like(x)
-    #     tag = torch.rand(1)
-    #     if tag < 0.5:
-    #         xnoises = torch.cat([x, noise], dim=1)
-    #         h, _ = self.attn(xnoises, xnoises, xnoises)
-    #         xh = torch.cat([x.squeeze(0), h.squeeze(0)[:x.shape[1]]], dim=-1)
-
-    #     else:
-    #         xnoises = torch.cat([noise, x], dim=1)
-    #         h, _ = self.attn(xnoises, xnoises, xnoises)
-    #         xh = torch.cat([x.squeeze(0), h.squeeze(0)[noise.shape[1]:]], dim=-1)
-
-    #     z = self.tanh(self.affine2(xh))
-    #     a = F.log_softmax(self.head(z), dim=-1)
-    #     v = self.value_head(z)
-    #     return a, v
 
     def forward(self, x, info={}):
+
         x = self.tanh(self.affine1(x)).unsqueeze(0)
-        noise1 = torch.randn_like(x)
-        noise2 = torch.randn_like(x)*2+1
-        tag = torch.rand(1)
-        if tag < 0.2:
-            xnoises = torch.cat([x, noise1, noise2], dim=1)
-            h, _ = self.attn(xnoises, xnoises, xnoises)
-            xh = torch.cat([x.squeeze(0), h.squeeze(0)[:x.shape[1]]], dim=-1)
+        xx = x[:, :6, :]
+        h, _ = self.attn(xx,xx,xx)
 
-        elif tag < 0.8:
-            xnoises = torch.cat([noise1, x, noise2], dim=1)
-            h, _ = self.attn(xnoises, xnoises, xnoises)
-            xh = torch.cat([x.squeeze(0), h.squeeze(0)[noise1.shape[1]:noise1.shape[1]+x.shape[1]]], dim=-1)
-
-        else:
-            xnoises = torch.cat([noise1, noise2, x], dim=1)
-            h, _ = self.attn(xnoises, xnoises, xnoises)
-            xh = torch.cat([x.squeeze(0), h.squeeze(0)[noise1.shape[1]+noise2.shape[1]:]], dim=-1)
-
+        xh = torch.cat([x.squeeze(0),h.squeeze(0)], dim=-1)
 
         z = self.tanh(self.affine2(xh))
         a = F.log_softmax(self.head(z), dim=-1)

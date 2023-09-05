@@ -132,13 +132,29 @@ class World(object):  # multi-agent world
             self.update_agent_state(agent)
 
     # gather agent action forces
+    # def apply_action_force(self, p_force):
+    #     # set applied forces
+    #     for i, agent in enumerate(self.agents):
+    #         if agent.movable:
+    #             noise = np.random.randn(*agent.action.u.shape) * agent.u_noise if agent.u_noise else 0.0
+    #             p_force[i] = agent.action.u + noise
+    #     return p_force
+    
+
     def apply_action_force(self, p_force):
         # set applied forces
         for i, agent in enumerate(self.agents):
             if agent.movable:
-                noise = np.random.randn(*agent.action.u.shape) * agent.u_noise if agent.u_noise else 0.0
-                p_force[i] = agent.action.u + noise
+                if agent.group_id == 0 or agent.group_id == 1:
+                    noise = np.random.randn(*agent.action.u.shape) * agent.u_noise if agent.u_noise else 0.0
+                    p_force[i] = agent.action.u + noise
+                else:
+                    # Set the action to a random direction or any other desired behavior
+                    agent.action.u = np.random.uniform(low=-1.0, high=1.0, size=agent.action.u.shape)
+                    noise = np.random.randn(*agent.action.u.shape) * agent.u_noise if agent.u_noise else 0.0
+                    p_force[i] = agent.action.u + noise
         return p_force
+
 
     # gather physical forces acting on entities
     def apply_environment_force(self, p_force):

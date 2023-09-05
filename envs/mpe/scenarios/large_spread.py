@@ -28,6 +28,8 @@ class Scenario(BaseScenario):
             item for sublist in self.group_indices for item in sublist
         ]
 
+        
+
         # generate colors:
         self.colors = [np.random.random(3) for _ in groups]
 
@@ -43,6 +45,13 @@ class Scenario(BaseScenario):
             agent.group_one_hot[agent.group_id] = 1
             agent.id = [0] * num_agents
             agent.id[i] = 1
+            if agent.group_id == 0:
+                agent.act = True
+            elif agent.group_id == 1:
+                agent.act = True
+            else:
+                agent.act = False
+            
 
         # add landmarks
         world.landmarks = [Landmark() for i in range(num_landmarks)]
@@ -105,6 +114,9 @@ class Scenario(BaseScenario):
 
     def reward(self, agent, world):
         # Agents are rewarded based on minimum agent distance to each landmark, penalized for collisions
+
+        if not agent.act:
+            return 0
 
         i = world.agents.index(agent)
         landmark_index = self.group_indices[i]
