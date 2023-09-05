@@ -4,19 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/HierComm.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/configs/agents/hiercomm.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/baselines/hiercomm.py" beforeDir="false" afterPath="$PROJECT_DIR$/baselines/hiercomm.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/baselines/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/baselines/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm.py" afterDir="false" />
-    </list>
+    <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="newalgo" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -90,12 +78,33 @@
       <workItem from="1693394693569" duration="1228000" />
       <workItem from="1693401802458" duration="13804000" />
       <workItem from="1693709144544" duration="1280000" />
-      <workItem from="1693925222194" duration="1154000" />
+      <workItem from="1693925222194" duration="1475000" />
     </task>
+    <task id="LOCAL-00001" summary="newalgo">
+      <option name="closed" value="true" />
+      <created>1693926408013</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1693926408013</updated>
+    </task>
+    <task id="LOCAL-00002" summary="newalgo">
+      <option name="closed" value="true" />
+      <created>1693926438276</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1693926438276</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="newalgo" />
+    <option name="LAST_COMMIT_MESSAGE" value="newalgo" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/HierComm$main.coverage" NAME="main Coverage Results" MODIFIED="1693926207687" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
