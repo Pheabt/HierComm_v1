@@ -1,0 +1,738 @@
+Index: runner/runner_hiercomm.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import torch\nimport torch.nn as nn\nfrom collections import namedtuple\nimport numpy as np\nfrom torch.optim import Adam,RMSprop\nfrom modules.utils import merge_dict, multinomials_log_density\nimport time\nfrom runner import Runner\n\nimport argparse\n\nTransition = namedtuple('Transition', ('action_outs', 'actions', 'rewards', 'values', 'episode_masks', 'episode_agent_masks'))\nGod_Transition = namedtuple('God_Transition', ('god_action_out', 'god_action', 'god_reward', 'god_value', 'episode_masks',))\n\n\nclass RunnerHiercomm(Runner):\n    def __init__(self, config, env, agent):\n        super().__init__(config, env, agent)\n\n\n        #self.optimizer_agent_ac = Adam(params=self.agent.parameters(), lr=self.args.lr)\n        self.optimizer_agent_ac = RMSprop(self.agent.agent.parameters(), lr = 0.003, alpha=0.97, eps=1e-6)\n        self.optimizer_god_ac = RMSprop(self.agent.god.parameters(), lr = 0.006, alpha=0.97, eps=1e-6)\n\n        self.n_nodes = int(self.n_agents * (self.n_agents - 1) / 2)\n        self.interval = self.args.interval\n\n\n\n\n    def optimizer_zero_grad(self):\n        self.optimizer_agent_ac.zero_grad()\n        self.optimizer_god_ac.zero_grad()\n\n\n\n    def optimizer_step(self):\n        self.optimizer_agent_ac.step()\n        self.optimizer_god_ac.step()\n\n\n    def compute_grad(self, batch):\n        log=dict()\n        agent_log = self.compute_agent_grad(batch[0])\n        god_log = self.compute_god_grad(batch[1])\n\n        merge_dict(agent_log, log)\n        merge_dict(god_log, log)\n        return log\n\n\n\n\n\n    def train_batch(self, batch_size):\n        batch_data, batch_log = self.collect_batch_data(batch_size)\n        self.optimizer_zero_grad()\n        train_log = self.compute_grad(batch_data)\n        merge_dict(batch_log, train_log)\n        for p in self.params:\n            if p._grad is not None:\n                p._grad.data /= batch_log['num_steps']\n        self.optimizer_step()\n        return train_log\n\n\n\n\n\n    def collect_batch_data(self, batch_size):\n        batch_data = []\n        god_batch_data = []\n        batch_log = dict()\n        num_episodes = 0\n\n        while len(batch_data) < batch_size:\n            episode_data,episode_log = self.run_an_episode()\n            batch_data += episode_data[0]\n            god_batch_data += episode_data[1]\n            merge_dict(episode_log, batch_log)\n            num_episodes += 1\n\n        batch_log['num_episodes'] = num_episodes\n        batch_log['num_steps'] = len(batch_data)\n        batch_data = Transition(*zip(*batch_data))\n        god_batch_data = God_Transition(*zip(*god_batch_data))\n\n        return (batch_data, god_batch_data), batch_log\n\n\n    def run_an_episode(self):\n\n        log = dict()\n\n        memory = []\n        god_memory = []\n\n        self.reset()\n        obs = self.env.get_obs()\n\n        obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)\n        graph = self.env.get_graph()\n        god_action_out, god_value = self.agent.god(obs_tensor, graph)\n        god_action = self.choose_action(god_action_out)\n        god_action = [god_action[0].reshape(1)]\n        g, set = self.agent.graph_partition(graph, god_action)\n\n        god_reward_list = []\n        god_reward = np.zeros(1)\n\n        step = 1\n        num_group = 0\n        episode_return = 0\n        done = False\n        while not done and step <= self.args.episode_length:\n\n            obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)\n\n            if step % self.interval == 0:\n                graph = self.env.get_graph()\n                god_action_out, god_value = self.agent.god(obs_tensor, graph)\n                god_action = self.choose_action(god_action_out)\n                god_action = [god_action[0].reshape(1)]\n                g, set = self.agent.graph_partition(graph, god_action)\n\n\n            after_comm = self.agent.communicate(obs_tensor, g, set)\n            action_outs, values = self.agent.agent(after_comm)\n            actions = self.choose_action(action_outs)\n            rewards, done, env_info = self.env.step(actions)\n\n            god_reward_list.append(np.mean(rewards).reshape(1))\n\n            if step % self.interval == 0:\n                god_reward = np.mean(god_reward_list).reshape(1)\n                god_reward_list = []\n\n\n            next_obs = self.env.get_obs()\n\n            done = done or step == self.args.episode_length\n\n            episode_mask = np.ones(rewards.shape)\n            episode_agent_mask = np.ones(rewards.shape)\n            god_episode_mask = np.ones(1)\n            if done:\n                episode_mask = np.zeros(rewards.shape)\n                god_episode_mask = np.zeros(1)\n            elif 'completed_agent' in env_info:\n                episode_agent_mask = 1 - np.array(env_info['completed_agent']).reshape(-1)\n\n\n            trans = Transition(action_outs, actions, rewards, values, episode_mask, episode_agent_mask)\n            memory.append(trans)\n\n\n            if step % self.interval == 0:\n                god_trans = God_Transition(god_action_out, god_action, god_reward, god_value, god_episode_mask)\n                god_memory.append(god_trans)\n\n            obs = next_obs\n            episode_return += int(np.sum(rewards))\n            step += 1\n            num_group += len(set[1])\n\n\n        log['episode_return'] = episode_return\n        log['episode_steps'] = [step-1]\n        log['num_groups'] = num_group / (step - 1)\n\n        if 'num_collisions' in env_info:\n            log['num_collisions'] = int(env_info['num_collisions'])\n\n        # if self.args.env == 'tj':\n        #     merge_dict(self.env.get_stat(),log)\n\n        return (memory, god_memory), log\n\n\n\n\n\n    def compute_god_grad(self, batch):\n\n        log = dict()\n        batch_size = len(batch.god_value)\n        n = 1\n\n        rewards = torch.Tensor(np.array(batch.god_reward))\n        actions = torch.Tensor(np.array(batch.god_action))\n        actions = actions.transpose(1, 2).view(-1, n, 1)\n\n\n        episode_masks = torch.Tensor(np.array(batch.episode_masks))\n\n        values = torch.cat(batch.god_value, dim=0)\n        action_outs = torch.stack(batch.god_action_out, dim=0)\n\n\n\n        returns = torch.Tensor(batch_size, n)\n        advantages = torch.Tensor(batch_size, n)\n        values = values.view(batch_size, n)\n        prev_returns = 0\n\n\n        for i in reversed(range(batch_size)):\n            returns[i] = rewards[i] + self.args.gamma * prev_returns * episode_masks[i]\n            prev_returns = returns[i].clone()\n\n\n        for i in reversed(range(batch_size)):\n            advantages[i] = returns[i] - values.data[i]\n\n        if self.args.normalize_rewards:\n            advantages = (advantages - advantages.mean()) / advantages.std()\n\n\n        log_p_a = [action_outs.view(-1, 10)]\n        actions = actions.contiguous().view(-1, 1)\n        log_prob = multinomials_log_density(actions, log_p_a)\n        action_loss = -advantages.view(-1) * log_prob.squeeze()\n        actor_loss = action_loss.sum()\n\n\n        targets = returns\n        value_loss = (values - targets).pow(2).view(-1)\n        critic_loss = value_loss.sum()\n\n\n        total_loss = actor_loss + self.args.value_coeff * critic_loss\n        total_loss.backward()\n\n        log['god_action_loss'] = actor_loss.item()\n        log['god_value_loss'] = critic_loss.item()\n        log['god_total_loss'] = total_loss.item()\n\n        return log
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/runner/runner_hiercomm.py b/runner/runner_hiercomm.py
+--- a/runner/runner_hiercomm.py	(revision adae843540307cfcffbea284f0c80908c89157e0)
++++ b/runner/runner_hiercomm.py	(date 1693415336902)
+@@ -20,7 +20,7 @@
+ 
+         #self.optimizer_agent_ac = Adam(params=self.agent.parameters(), lr=self.args.lr)
+         self.optimizer_agent_ac = RMSprop(self.agent.agent.parameters(), lr = 0.003, alpha=0.97, eps=1e-6)
+-        self.optimizer_god_ac = RMSprop(self.agent.god.parameters(), lr = 0.006, alpha=0.97, eps=1e-6)
++        self.optimizer_tie_ac = RMSprop(self.agent.tie.parameters(), lr = 0.006, alpha=0.97, eps=1e-6)
+ 
+         self.n_nodes = int(self.n_agents * (self.n_agents - 1) / 2)
+         self.interval = self.args.interval
+@@ -30,13 +30,13 @@
+ 
+     def optimizer_zero_grad(self):
+         self.optimizer_agent_ac.zero_grad()
+-        self.optimizer_god_ac.zero_grad()
++        self.optimizer_tie_ac.zero_grad()
+ 
+ 
+ 
+     def optimizer_step(self):
+         self.optimizer_agent_ac.step()
+-        self.optimizer_god_ac.step()
++        self.optimizer_tie_ac.step()
+ 
+ 
+     def compute_grad(self, batch):
+@@ -99,11 +99,10 @@
+         obs = self.env.get_obs()
+ 
+         obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
+-        graph = self.env.get_graph()
+-        god_action_out, god_value = self.agent.god(obs_tensor, graph)
+-        god_action = self.choose_action(god_action_out)
+-        god_action = [god_action[0].reshape(1)]
+-        g, set = self.agent.graph_partition(graph, god_action)
++
++        cmatrix = self.agent.agent_clustering(obs_tensor)
++        sets = self.agent.cmatrix_to_set(cmatrix)
++
+ 
+         god_reward_list = []
+         god_reward = np.zeros(1)
+@@ -112,19 +111,17 @@
+         num_group = 0
+         episode_return = 0
+         done = False
++
+         while not done and step <= self.args.episode_length:
+ 
+             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
+ 
+             if step % self.interval == 0:
+-                graph = self.env.get_graph()
+-                god_action_out, god_value = self.agent.god(obs_tensor, graph)
+-                god_action = self.choose_action(god_action_out)
+-                god_action = [god_action[0].reshape(1)]
+-                g, set = self.agent.graph_partition(graph, god_action)
++                cmatrix = self.agent.agent_clustering(obs_tensor)
++                sets = self.agent.cmatrix_to_set(cmatrix)
+ 
+ 
+-            after_comm = self.agent.communicate(obs_tensor, g, set)
++            after_comm = self.agent.communicate(obs_tensor, sets)
+             action_outs, values = self.agent.agent(after_comm)
+             actions = self.choose_action(action_outs)
+             rewards, done, env_info = self.env.step(actions)
+@@ -154,14 +151,14 @@
+             memory.append(trans)
+ 
+ 
+-            if step % self.interval == 0:
+-                god_trans = God_Transition(god_action_out, god_action, god_reward, god_value, god_episode_mask)
+-                god_memory.append(god_trans)
++            # if step % self.interval == 0:
++            #     god_trans = God_Transition(god_action_out, god_action, god_reward, god_value, god_episode_mask)
++            #     god_memory.append(god_trans)
+ 
+             obs = next_obs
+             episode_return += int(np.sum(rewards))
+             step += 1
+-            num_group += len(set[1])
++            num_group += len(sets)
+ 
+ 
+         log['episode_return'] = episode_return
+Index: baselines/hiercomm.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import numpy as np\nimport torch\nimport torch.nn.functional as F\nfrom torch import nn\nfrom torch_geometric.nn import GATConv,GCNConv\nimport networkx as nx\nimport argparse\nfrom modules.graph import measure_strength\nfrom torch_geometric.data import Data\n\n\n\nclass HierCommAgent(nn.Module):\n\n    def __init__(self, agent_config):\n        super(HierCommAgent, self).__init__()\n\n        self.args = argparse.Namespace(**agent_config)\n        self.seed = self.args.seed\n\n        self.n_agents = self.args.n_agents\n        self.hid_size = self.args.hid_size\n\n        self.agent = AgentAC(self.args)\n        self.god = GodAC(self.args)\n\n        if hasattr(self.args, 'random_prob'):\n            self.random_prob = self.args.random_prob\n\n        self.block = self.args.block\n\n\n\n    def random_set(self):\n        G = nx.binomial_graph(self.n_agents, self.random_prob, seed=self.seed , directed=False)\n        sets = self.graph_partition(G, 0.5)\n        return G, sets\n\n\n    def graph_partition(self, G, god_action):\n\n        #min_value = 0.5\n        min_max_set = set()\n        for e in G.edges():\n            strength = measure_strength(G, e[0], e[1])\n            G.add_edge(e[0], e[1], weight = round(strength,2))\n            min_max_set.add(strength)\n            #min_max_list.append(strength)\n\n        min_max_list = list(min_max_set)\n        if min_max_list:\n            thershold = np.percentile(np.array(min_max_list), (int(god_action[0])) * 10)\n            # min_max_list.sort()\n            # min_value = min_max_list[0]\n            # max_value = min_max_list[-1]\n            # thershold = ((max_value - min_value) / 10) * int(god_action[0]) + min_value\n            # print(thershold)\n        else:\n            thershold = 0.0\n\n        # thershold = 2\n\n        g = nx.Graph()\n        g.add_nodes_from(G.nodes(data=False), node_strength =0.0)\n        for e in G.edges():\n            strength = G.get_edge_data(e[0], e[1])['weight']\n            if strength >= thershold:\n                g.nodes[e[0]]['node_strength'] += strength\n                g.nodes[e[1]]['node_strength'] += strength\n                g.add_edge(e[0], e[1])\n            # print(strength)\n            # raise ValueError('strength > thershold')\n\n        attr_dict = nx.get_node_attributes(g, 'node_strength')\n        sets = []\n        core_node = []\n        for c in nx.connected_components(g):\n            list_c = list(c)\n            sets.append(list_c)\n            list_c_attr = [attr_dict[i] for i in list_c]\n            core_node.append(list_c[list_c_attr.index(max(list_c_attr))])\n\n        return g, (core_node, sets)\n\n\n\n\n\n\n\n\n    def communicate(self, local_obs, graph=None, node_set =None):\n\n        core_node, set = node_set\n\n        local_obs = self.agent.local_emb(local_obs)\n        intra_obs = self.agent.intra_com(local_obs, graph)\n\n\n        #adj_matrix = torch.tensor(nx.to_numpy_array(graph), dtype=torch.float).view(1, -1).repeat(self.n_agents, 1)\n\n        inter_obs = torch.zeros_like(intra_obs)\n        if len(set) != 1:\n            core_obs = intra_obs[core_node, :]\n            group_obs = self.agent.inter_com(core_obs)\n            for index, group_members in enumerate (set):\n                inter_obs[group_members, :] = group_obs[index,:].repeat(len(group_members), 1)\n\n\n        if self.block == 'no':\n            #after_comm = torch.cat((local_obs, intra_obs, inter_obs, adj_matrix), dim=-1)\n            after_comm = torch.cat((local_obs,  inter_obs,  intra_obs), dim=-1)\n        elif self.block == 'inter':\n            after_comm = torch.cat((local_obs,  intra_obs, torch.rand_like(inter_obs)), dim=-1)\n        elif self.block == 'intra':\n            after_comm = torch.cat((local_obs,  inter_obs, torch.rand_like(intra_obs)), dim=-1)\n        else:\n            raise ValueError('block must be one of no, inter, intra')\n\n\n        return after_comm\n\n\n\n\n\n\nclass GodAC(nn.Module):\n    def __init__(self, args):\n        super(GodAC, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.hid_size = args.hid_size\n        self.threshold = self.args.threshold\n        self.tanh = nn.Tanh()\n\n        self.fc1_1 = nn.Linear(args.obs_shape * self.n_agents , self.hid_size * 1)\n        self.fc1_2 = nn.Linear(self.n_agents**2 , self.hid_size)\n        self.fc2 = nn.Linear(self.hid_size *2, self.hid_size)\n        self.head = nn.Linear(self.hid_size, 10)\n        self.value = nn.Linear(self.hid_size, 1)\n\n\n    def forward(self, input, graph):\n\n        adj_matrix = torch.tensor(nx.to_numpy_array(graph), dtype=torch.float).view(1, -1)\n        h1 = self.tanh(self.fc1_1(input.view(1, -1)))\n        h2 = self.tanh(self.fc1_2(adj_matrix))\n        hid = torch.cat([h1,h2], dim=1)\n        hid = self.tanh(self.fc2(hid))\n\n        a = F.log_softmax(self.head(hid), dim=-1)\n        v = self.value(hid)\n\n        return a, v\n\n\n\n\n\n\nclass AgentAC(nn.Module):\n    def __init__(self, args):\n        super(AgentAC, self).__init__()\n\n        self.args = args\n        self.n_agents = args.n_agents\n        self.hid_size = 32\n        self.n_actions = self.args.n_actions\n        self.tanh = nn.Tanh()\n\n        self.emb_fc = nn.Linear(args.obs_shape, self.hid_size)\n\n        #self.intra = GATConv(self.hid_size, self.hid_size, heads=1, add_self_loops =False, concat=False)\n        self.intra = GCNConv(self.hid_size, self.hid_size, add_self_loops= False)\n\n        #encoder_layer = nn.TransformerEncoderLayer(d_model=self.hid_size, nhead=1, dim_feedforward=self.hid_size,\n        #                                                batch_first=True)\n        #self.inter = nn.TransformerEncoder(encoder_layer, num_layers=1)\n        self.inter = nn.MultiheadAttention(self.hid_size, num_heads=1, batch_first=True)\n        # self.affine2 = nn.Linear(self.hid_size * 3 + self.n_agents**2  , self.hid_size)\n        self.affine2 = nn.Linear(self.hid_size * 3, self.hid_size)\n\n\n        self.actor_head = nn.Linear(self.hid_size, self.n_actions)\n        self.value_head = nn.Linear(self.hid_size, 1)\n\n    def local_emb(self, input):\n        local_obs = self.tanh(self.emb_fc(input))\n        return local_obs\n\n    def intra_com(self, x, graph):\n\n        if list(graph.edges()) == []:\n            h = torch.zeros(x.shape)\n        else:\n            edge_index = torch.tensor(list(graph.edges()), dtype=torch.long)\n            data = Data(x=x, edge_index=edge_index.t().contiguous())\n            h = self.tanh(self.intra(data.x, data.edge_index))\n\n        return h\n\n    def inter_com(self, input):\n        x = input.unsqueeze(0)\n        h, weights = self.inter(x, x, x)\n        #h = self.inter(x)\n\n        return h.squeeze(0)\n\n\n\n\n    def forward(self, final_obs):\n        h = self.tanh(self.affine2(final_obs))\n        a = F.log_softmax(self.actor_head(h), dim=-1)\n        v = self.value_head(h)\n\n        return a, v\n\n\n\n\n\n#\n# class GodActor(nn.Module):\n#     def __init__(self, args):\n#         super(GodActor, self).__init__()\n#         self.args = args\n#         self.n_agents = args.n_agents\n#         self.hid_size = self.hid_size\n#         self.threshold = self.args.threshold\n#         self.tanh = nn.Tanh()\n#\n#         self.fc1 = nn.Linear(args.obs_shape * self.n_agents + self.n_agents**2 , self.hid_size * 3)\n#         self.fc2 = nn.Linear(self.hid_size * 3 , self.hid_size)\n#         self.head = nn.Linear(self.hid_size, 10)\n#\n#     def forward(self, input, graph):\n#\n#         adj_matrix = torch.tensor(nx.to_numpy_array(graph), dtype=torch.float).view(1, -1)\n#         hid = torch.cat([input.view(1,-1), adj_matrix], dim=1)\n#         hid = self.tanh(self.fc1(hid))\n#         hid = self.tanh(self.fc2(hid))\n#         a = F.log_softmax(self.head(hid), dim=-1)\n#\n#         return a\n#\n#\n#\n# class GodCritic(nn.Module):\n#     def __init__(self, args):\n#         super(GodCritic, self).__init__()\n#         self.args = args\n#         self.n_agents = args.n_agents\n#         self.hid_size = args.hid_size\n#         self.threshold = self.args.threshold\n#         self.tanh = nn.ReLU()\n#\n#         self.fc1 = nn.Linear(args.obs_shape * self.n_agents + self.n_agents ** 2, self.hid_size * 4)\n#         self.fc2 = nn.Linear(self.hid_size * 4 , self.hid_size)\n#         self.value = nn.Linear(self.hid_size, 1)\n#\n#     def forward(self, input, graph):\n#\n#         adj_matrix = torch.tensor(nx.to_numpy_array(graph), dtype=torch.float).view(1, -1)\n#         hid = torch.cat([input.view(1,-1), adj_matrix], dim=1)\n#         hid = self.tanh(self.fc1(hid))\n#         hid = self.tanh(self.fc2(hid))\n#         v = self.value(hid)\n#\n#         return v\n#
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/baselines/hiercomm.py b/baselines/hiercomm.py
+--- a/baselines/hiercomm.py	(revision adae843540307cfcffbea284f0c80908c89157e0)
++++ b/baselines/hiercomm.py	(date 1693415247174)
+@@ -22,7 +22,8 @@
+         self.hid_size = self.args.hid_size
+ 
+         self.agent = AgentAC(self.args)
+-        self.god = GodAC(self.args)
++        self.tie = Tie(self.args)
++        self.clustering = clustering(self.args)
+ 
+         if hasattr(self.args, 'random_prob'):
+             self.random_prob = self.args.random_prob
+@@ -30,85 +31,59 @@
+         self.block = self.args.block
+ 
+ 
++    def agent_clustering(self, obs):
++        cmatrix = self.clustering(obs)
++        return cmatrix
++
++
++    def cmatrix_to_set(self, cmatrix):
++        # cmatrix is a soft clustering matrix
++        # return a list of sets
++
++        sets = [[] for _ in range(self.n_agents)]
+ 
+-    def random_set(self):
+-        G = nx.binomial_graph(self.n_agents, self.random_prob, seed=self.seed , directed=False)
+-        sets = self.graph_partition(G, 0.5)
+-        return G, sets
++        for i in range(self.n_agents):
++            #max_index = torch.argmax(cmatrix[i,:])
++            # sample based on prob
++            index = torch.multinomial(cmatrix[i,:], 1).item()
++            sets[index].append(i)
+ 
++        # remove empty sets
++        sets = [s for s in sets if s != []]
+ 
+-    def graph_partition(self, G, god_action):
++        return sets
+ 
+-        #min_value = 0.5
+-        min_max_set = set()
+-        for e in G.edges():
+-            strength = measure_strength(G, e[0], e[1])
+-            G.add_edge(e[0], e[1], weight = round(strength,2))
+-            min_max_set.add(strength)
+-            #min_max_list.append(strength)
++    def communicate(self, local_obs, sets):
++        local_obs = self.tie.local_emb(local_obs)
+ 
+-        min_max_list = list(min_max_set)
+-        if min_max_list:
+-            thershold = np.percentile(np.array(min_max_list), (int(god_action[0])) * 10)
+-            # min_max_list.sort()
+-            # min_value = min_max_list[0]
+-            # max_value = min_max_list[-1]
+-            # thershold = ((max_value - min_value) / 10) * int(god_action[0]) + min_value
+-            # print(thershold)
+-        else:
+-            thershold = 0.0
+-
+-        # thershold = 2
+-
+-        g = nx.Graph()
+-        g.add_nodes_from(G.nodes(data=False), node_strength =0.0)
+-        for e in G.edges():
+-            strength = G.get_edge_data(e[0], e[1])['weight']
+-            if strength >= thershold:
+-                g.nodes[e[0]]['node_strength'] += strength
+-                g.nodes[e[1]]['node_strength'] += strength
+-                g.add_edge(e[0], e[1])
+-            # print(strength)
+-            # raise ValueError('strength > thershold')
+-
+-        attr_dict = nx.get_node_attributes(g, 'node_strength')
+-        sets = []
+-        core_node = []
+-        for c in nx.connected_components(g):
+-            list_c = list(c)
+-            sets.append(list_c)
+-            list_c_attr = [attr_dict[i] for i in list_c]
+-            core_node.append(list_c[list_c_attr.index(max(list_c_attr))])
+-
+-        return g, (core_node, sets)
+-
+-
+-
+-
+-
+-
+-
+-
+-    def communicate(self, local_obs, graph=None, node_set =None):
+-
+-        core_node, set = node_set
+-
+-        local_obs = self.agent.local_emb(local_obs)
+-        intra_obs = self.agent.intra_com(local_obs, graph)
+-
++        #do attention for each set, and then concat
++
++        intra_obs = torch.zeros_like(local_obs)
++        inter_obs = torch.zeros_like(local_obs)
++
++        global_set = []
++        for set in sets:
++            if len(set) > 1:
++                member_obs = local_obs[set,:]
++                intra_obs[set,:] = self.tie.intra_com(member_obs)
++                pooling = self.tie.pooling(member_obs)
++                global_set.append(pooling)
++            else:
++                intra_obs[set,:] = local_obs[set,:]
++                global_set.append(local_obs[set,:])
++
++        inter_obs_input = torch.cat(global_set, dim=0)
++        inter_obs_output = self.tie.inter_com(inter_obs_input)
++
++        for index, set in enumerate(sets):
++            if len(set) > 1:
++                inter_obs[set,:] = inter_obs_output[index,:].repeat(len(set), 1)
++            else:
++                inter_obs[set,:] = inter_obs_output[index,:]
+ 
+-        #adj_matrix = torch.tensor(nx.to_numpy_array(graph), dtype=torch.float).view(1, -1).repeat(self.n_agents, 1)
+-
+-        inter_obs = torch.zeros_like(intra_obs)
+-        if len(set) != 1:
+-            core_obs = intra_obs[core_node, :]
+-            group_obs = self.agent.inter_com(core_obs)
+-            for index, group_members in enumerate (set):
+-                inter_obs[group_members, :] = group_obs[index,:].repeat(len(group_members), 1)
+ 
+ 
+         if self.block == 'no':
+-            #after_comm = torch.cat((local_obs, intra_obs, inter_obs, adj_matrix), dim=-1)
+             after_comm = torch.cat((local_obs,  inter_obs,  intra_obs), dim=-1)
+         elif self.block == 'inter':
+             after_comm = torch.cat((local_obs,  intra_obs, torch.rand_like(inter_obs)), dim=-1)
+@@ -117,7 +92,6 @@
+         else:
+             raise ValueError('block must be one of no, inter, intra')
+ 
+-
+         return after_comm
+ 
+ 
+@@ -125,34 +99,52 @@
+ 
+ 
+ 
+-class GodAC(nn.Module):
++
++
++
++class Tie (nn.Module):
+     def __init__(self, args):
+-        super(GodAC, self).__init__()
++        super(Tie, self).__init__()
+         self.args = args
+         self.n_agents = args.n_agents
+         self.hid_size = args.hid_size
+-        self.threshold = self.args.threshold
+         self.tanh = nn.Tanh()
++        self.att_head = self.args.att_head
++
++        self.local_fc = nn.Linear(self.args.obs_shape, self.hid_size)
++
++        self.intra_attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
++
++        self.inter_attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
++        self.inter_fc2 = nn.Linear(self.hid_size * 2, self.hid_size)
++
++        self.attset_fc = nn.Linear(self.hid_size, 1)
++
++
++    def local_emb(self, input):
++        return self.tanh(self.local_fc(input))
++
++    def intra_com(self, input):
++        x = input.unsqueeze(0)
++        h, _ = self.intra_attn(x,x,x)
++        return h.squeeze(0)
+ 
+-        self.fc1_1 = nn.Linear(args.obs_shape * self.n_agents , self.hid_size * 1)
+-        self.fc1_2 = nn.Linear(self.n_agents**2 , self.hid_size)
+-        self.fc2 = nn.Linear(self.hid_size *2, self.hid_size)
+-        self.head = nn.Linear(self.hid_size, 10)
+-        self.value = nn.Linear(self.hid_size, 1)
++    def inter_com(self, input):
++        x = input.unsqueeze(0)
++        h, _ = self.inter_attn(x,x,x)
++        return h.squeeze(0)
+ 
++    def pooling(self, input):
+ 
+-    def forward(self, input, graph):
++        #score = self.attset_fc(input)
++        score = F.softmax(self.attset_fc(input), dim=0)
+ 
+-        adj_matrix = torch.tensor(nx.to_numpy_array(graph), dtype=torch.float).view(1, -1)
+-        h1 = self.tanh(self.fc1_1(input.view(1, -1)))
+-        h2 = self.tanh(self.fc1_2(adj_matrix))
+-        hid = torch.cat([h1,h2], dim=1)
+-        hid = self.tanh(self.fc2(hid))
++        #zip the input to 1 * fixed size output based on score
++        output = torch.sum(score * input, dim=0, keepdim=True)    # [1, 1, hid_size]
++        return output
+ 
+-        a = F.log_softmax(self.head(hid), dim=-1)
+-        v = self.value(hid)
+ 
+-        return a, v
++
+ 
+ 
+ 
+@@ -165,53 +157,20 @@
+ 
+         self.args = args
+         self.n_agents = args.n_agents
+-        self.hid_size = 32
++        self.hid_size = args.hid_size
+         self.n_actions = self.args.n_actions
+         self.tanh = nn.Tanh()
+ 
+-        self.emb_fc = nn.Linear(args.obs_shape, self.hid_size)
+-
+-        #self.intra = GATConv(self.hid_size, self.hid_size, heads=1, add_self_loops =False, concat=False)
+-        self.intra = GCNConv(self.hid_size, self.hid_size, add_self_loops= False)
+-
+-        #encoder_layer = nn.TransformerEncoderLayer(d_model=self.hid_size, nhead=1, dim_feedforward=self.hid_size,
+-        #                                                batch_first=True)
+-        #self.inter = nn.TransformerEncoder(encoder_layer, num_layers=1)
+-        self.inter = nn.MultiheadAttention(self.hid_size, num_heads=1, batch_first=True)
+-        # self.affine2 = nn.Linear(self.hid_size * 3 + self.n_agents**2  , self.hid_size)
+-        self.affine2 = nn.Linear(self.hid_size * 3, self.hid_size)
+-
+-
++        self.fc_1 = nn.Linear(self.hid_size * 3, self.hid_size)
++        self.fc_2 = nn.Linear(self.hid_size, self.hid_size)
+         self.actor_head = nn.Linear(self.hid_size, self.n_actions)
+         self.value_head = nn.Linear(self.hid_size, 1)
+ 
+-    def local_emb(self, input):
+-        local_obs = self.tanh(self.emb_fc(input))
+-        return local_obs
+-
+-    def intra_com(self, x, graph):
+-
+-        if list(graph.edges()) == []:
+-            h = torch.zeros(x.shape)
+-        else:
+-            edge_index = torch.tensor(list(graph.edges()), dtype=torch.long)
+-            data = Data(x=x, edge_index=edge_index.t().contiguous())
+-            h = self.tanh(self.intra(data.x, data.edge_index))
+-
+-        return h
+-
+-    def inter_com(self, input):
+-        x = input.unsqueeze(0)
+-        h, weights = self.inter(x, x, x)
+-        #h = self.inter(x)
+-
+-        return h.squeeze(0)
+-
+-
+ 
+ 
+     def forward(self, final_obs):
+-        h = self.tanh(self.affine2(final_obs))
++        h = self.tanh(self.fc_1(final_obs))
++        h = self.tanh(self.fc_2(h))
+         a = F.log_softmax(self.actor_head(h), dim=-1)
+         v = self.value_head(h)
+ 
+@@ -221,52 +180,41 @@
+ 
+ 
+ 
+-#
+-# class GodActor(nn.Module):
+-#     def __init__(self, args):
+-#         super(GodActor, self).__init__()
+-#         self.args = args
+-#         self.n_agents = args.n_agents
+-#         self.hid_size = self.hid_size
+-#         self.threshold = self.args.threshold
+-#         self.tanh = nn.Tanh()
+-#
+-#         self.fc1 = nn.Linear(args.obs_shape * self.n_agents + self.n_agents**2 , self.hid_size * 3)
+-#         self.fc2 = nn.Linear(self.hid_size * 3 , self.hid_size)
+-#         self.head = nn.Linear(self.hid_size, 10)
+-#
+-#     def forward(self, input, graph):
+-#
+-#         adj_matrix = torch.tensor(nx.to_numpy_array(graph), dtype=torch.float).view(1, -1)
+-#         hid = torch.cat([input.view(1,-1), adj_matrix], dim=1)
+-#         hid = self.tanh(self.fc1(hid))
+-#         hid = self.tanh(self.fc2(hid))
+-#         a = F.log_softmax(self.head(hid), dim=-1)
+-#
+-#         return a
+-#
+-#
+-#
+-# class GodCritic(nn.Module):
+-#     def __init__(self, args):
+-#         super(GodCritic, self).__init__()
+-#         self.args = args
+-#         self.n_agents = args.n_agents
+-#         self.hid_size = args.hid_size
+-#         self.threshold = self.args.threshold
+-#         self.tanh = nn.ReLU()
+-#
+-#         self.fc1 = nn.Linear(args.obs_shape * self.n_agents + self.n_agents ** 2, self.hid_size * 4)
+-#         self.fc2 = nn.Linear(self.hid_size * 4 , self.hid_size)
+-#         self.value = nn.Linear(self.hid_size, 1)
+-#
+-#     def forward(self, input, graph):
+-#
+-#         adj_matrix = torch.tensor(nx.to_numpy_array(graph), dtype=torch.float).view(1, -1)
+-#         hid = torch.cat([input.view(1,-1), adj_matrix], dim=1)
+-#         hid = self.tanh(self.fc1(hid))
+-#         hid = self.tanh(self.fc2(hid))
+-#         v = self.value(hid)
+-#
+-#         return v
+-#
+\ No newline at end of file
++
++
++class clustering(nn.Module):
++
++    def __init__(self, args):
++        super(clustering, self).__init__()
++
++        self.args = args
++
++        self.n_agents = self.args.n_agents
++        self.hid_size = self.args.hid_size
++
++        self.att_head = self.args.att_head
++
++
++
++
++        self.tanh = nn.Tanh()
++
++        self.fc1 = nn.Linear(self.args.obs_shape, self.hid_size)
++        self.attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
++        self.fc2 = nn.Linear(self.hid_size * 2, self.hid_size)
++        self.head = nn.Linear(self.hid_size , self.n_agents)
++
++
++
++    def forward(self, x):
++
++        x = self.tanh(self.fc1(x)).unsqueeze(0)
++        h, _ = self.attn(x,x,x)
++
++        xh = torch.cat([x.squeeze(0),h.squeeze(0)], dim=-1)
++
++        z = self.tanh(self.fc2(xh))
++        cmatrix = F.softmax(self.head(z), dim=-1)
++
++        return cmatrix
++
+Index: .idea/workspace.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project version=\"4\">\n  <component name=\"AutoImportSettings\">\n    <option name=\"autoReloadType\" value=\"SELECTIVE\" />\n  </component>\n  <component name=\"ChangeListManager\">\n    <list default=\"true\" id=\"25891304-c199-40ae-9d6c-ae5645f6a6bc\" name=\"Changes\" comment=\"\" />\n    <option name=\"SHOW_DIALOG\" value=\"false\" />\n    <option name=\"HIGHLIGHT_CONFLICTS\" value=\"true\" />\n    <option name=\"HIGHLIGHT_NON_ACTIVE_CHANGELIST\" value=\"false\" />\n    <option name=\"LAST_RESOLUTION\" value=\"IGNORE\" />\n  </component>\n  <component name=\"ProjectColorInfo\"><![CDATA[{\n  \"associatedIndex\": 0\n}]]></component>\n  <component name=\"ProjectId\" id=\"2UhbK2Cs2In7kwtMk1iSAvcqYXj\" />\n  <component name=\"ProjectLevelVcsManager\" settingsEditedManually=\"true\" />\n  <component name=\"ProjectViewState\">\n    <option name=\"hideEmptyMiddlePackages\" value=\"true\" />\n    <option name=\"showLibraryContents\" value=\"true\" />\n  </component>\n  <component name=\"PropertiesComponent\"><![CDATA[{\n  \"keyToString\": {\n    \"RunOnceActivity.OpenProjectViewOnStart\": \"true\",\n    \"RunOnceActivity.ShowReadmeOnStart\": \"true\",\n    \"WebServerToolWindowFactoryState\": \"false\",\n    \"last_opened_file_path\": \"/Users/ming/Downloads/NewHierComm-main\",\n    \"node.js.detected.package.eslint\": \"true\",\n    \"node.js.detected.package.tslint\": \"true\",\n    \"node.js.selected.package.eslint\": \"(autodetect)\",\n    \"node.js.selected.package.tslint\": \"(autodetect)\",\n    \"vue.rearranger.settings.migration\": \"true\"\n  }\n}]]></component>\n  <component name=\"SpellCheckerSettings\" RuntimeDictionaries=\"0\" Folders=\"0\" CustomDictionaries=\"0\" DefaultDictionary=\"application-level\" UseSingleDictionary=\"true\" transferred=\"true\" />\n  <component name=\"TaskManager\">\n    <task active=\"true\" id=\"Default\" summary=\"Default task\">\n      <changelist id=\"25891304-c199-40ae-9d6c-ae5645f6a6bc\" name=\"Changes\" comment=\"\" />\n      <created>1693394692504</created>\n      <option name=\"number\" value=\"Default\" />\n      <option name=\"presentableId\" value=\"Default\" />\n      <updated>1693394692504</updated>\n      <workItem from=\"1693394693569\" duration=\"1228000\" />\n    </task>\n    <servers />\n  </component>\n  <component name=\"TypeScriptGeneratedFilesManager\">\n    <option name=\"version\" value=\"3\" />\n  </component>\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/workspace.xml b/.idea/workspace.xml
+--- a/.idea/workspace.xml	(revision adae843540307cfcffbea284f0c80908c89157e0)
++++ b/.idea/workspace.xml	(date 1693925292231)
+@@ -4,34 +4,80 @@
+     <option name="autoReloadType" value="SELECTIVE" />
+   </component>
+   <component name="ChangeListManager">
+-    <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="" />
++    <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="">
++      <change afterPath="$PROJECT_DIR$/.idea/HierComm.iml" afterDir="false" />
++      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
++      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
++      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
++      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
++      <change afterPath="$PROJECT_DIR$/configs/agents/hiercomm.yaml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/baselines/hiercomm.py" beforeDir="false" afterPath="$PROJECT_DIR$/baselines/hiercomm.py" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm.py" afterDir="false" />
++    </list>
+     <option name="SHOW_DIALOG" value="false" />
+     <option name="HIGHLIGHT_CONFLICTS" value="true" />
+     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+     <option name="LAST_RESOLUTION" value="IGNORE" />
+   </component>
+-  <component name="ProjectColorInfo"><![CDATA[{
+-  "associatedIndex": 0
+-}]]></component>
++  <component name="Git.Settings">
++    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
++  </component>
++  <component name="ProjectColorInfo">{
++  &quot;associatedIndex&quot;: 0
++}</component>
+   <component name="ProjectId" id="2UhbK2Cs2In7kwtMk1iSAvcqYXj" />
+   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+   <component name="ProjectViewState">
+     <option name="hideEmptyMiddlePackages" value="true" />
+     <option name="showLibraryContents" value="true" />
+   </component>
+-  <component name="PropertiesComponent"><![CDATA[{
+-  "keyToString": {
+-    "RunOnceActivity.OpenProjectViewOnStart": "true",
+-    "RunOnceActivity.ShowReadmeOnStart": "true",
+-    "WebServerToolWindowFactoryState": "false",
+-    "last_opened_file_path": "/Users/ming/Downloads/NewHierComm-main",
+-    "node.js.detected.package.eslint": "true",
+-    "node.js.detected.package.tslint": "true",
+-    "node.js.selected.package.eslint": "(autodetect)",
+-    "node.js.selected.package.tslint": "(autodetect)",
+-    "vue.rearranger.settings.migration": "true"
+-  }
+-}]]></component>
++  <component name="PropertiesComponent">{
++  &quot;keyToString&quot;: {
++    &quot;ASKED_SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
++    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
++    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
++    &quot;last_opened_file_path&quot;: &quot;/Users/ming/Documents/HierComm/configs/agents&quot;,
++    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
++    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
++    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
++    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
++    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
++  }
++}</component>
++  <component name="RecentsManager">
++    <key name="CopyFile.RECENT_KEYS">
++      <recent name="$PROJECT_DIR$/configs/agents" />
++    </key>
++  </component>
++  <component name="RunManager">
++    <configuration name="main" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
++      <module name="HierComm" />
++      <option name="INTERPRETER_OPTIONS" value="" />
++      <option name="PARENT_ENVS" value="true" />
++      <envs>
++        <env name="PYTHONUNBUFFERED" value="1" />
++      </envs>
++      <option name="SDK_HOME" value="" />
++      <option name="SDK_NAME" value="tie" />
++      <option name="WORKING_DIRECTORY" value="" />
++      <option name="IS_MODULE_SDK" value="false" />
++      <option name="ADD_CONTENT_ROOTS" value="true" />
++      <option name="ADD_SOURCE_ROOTS" value="true" />
++      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
++      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
++      <option name="PARAMETERS" value="--use_offline_wandb" />
++      <option name="SHOW_COMMAND_LINE" value="false" />
++      <option name="EMULATE_TERMINAL" value="false" />
++      <option name="MODULE_MODE" value="false" />
++      <option name="REDIRECT_INPUT" value="false" />
++      <option name="INPUT_FILE" value="" />
++      <method v="2" />
++    </configuration>
++  </component>
+   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+   <component name="TaskManager">
+     <task active="true" id="Default" summary="Default task">
+@@ -41,10 +87,15 @@
+       <option name="presentableId" value="Default" />
+       <updated>1693394692504</updated>
+       <workItem from="1693394693569" duration="1228000" />
++      <workItem from="1693401802458" duration="13804000" />
++      <workItem from="1693709144544" duration="1280000" />
+     </task>
+     <servers />
+   </component>
+   <component name="TypeScriptGeneratedFilesManager">
+     <option name="version" value="3" />
+   </component>
++  <component name="com.intellij.coverage.CoverageDataManagerImpl">
++    <SUITE FILE_PATH="coverage/HierComm$main.coverage" NAME="main Coverage Results" MODIFIED="1693415338566" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
++  </component>
+ </project>
+\ No newline at end of file
+Index: .idea/HierComm.iml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/HierComm.iml b/.idea/HierComm.iml
+new file mode 100644
+--- /dev/null	(date 1693402002395)
++++ b/.idea/HierComm.iml	(date 1693402002395)
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<module type="PYTHON_MODULE" version="4">
++  <component name="NewModuleRootManager">
++    <content url="file://$MODULE_DIR$" />
++    <orderEntry type="jdk" jdkName="tie" jdkType="Python SDK" />
++    <orderEntry type="sourceFolder" forTests="false" />
++  </component>
++  <component name="PyDocumentationSettings">
++    <option name="format" value="PLAIN" />
++    <option name="myDocStringFormat" value="Plain" />
++  </component>
++</module>
+\ No newline at end of file
+Index: .idea/modules.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/modules.xml b/.idea/modules.xml
+new file mode 100644
+--- /dev/null	(date 1693402002402)
++++ b/.idea/modules.xml	(date 1693402002402)
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="ProjectModuleManager">
++    <modules>
++      <module fileurl="file://$PROJECT_DIR$/.idea/HierComm.iml" filepath="$PROJECT_DIR$/.idea/HierComm.iml" />
++    </modules>
++  </component>
++</project>
+\ No newline at end of file
+Index: main.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import os\nimport numpy as np\nimport random\nimport time\nimport wandb\nimport argparse\nimport sys\nimport torch\nimport signal\nfrom os.path import dirname, abspath\nfrom envs import REGISTRY as env_REGISTRY\nfrom baselines import REGISTRY as agent_REGISTRY\nfrom runner import REGISTRY as runner_REGISTRY\nfrom modules.multi_processing import MultiPeocessRunner\nfrom modules.multi_processing_double import MultiPeocessRunnerDouble\nfrom configs.utils import get_config, recursive_dict_update, signal_handler, merge_dict\n\n\ndef main(args):\n\n    default_config = get_config('experiment')\n    env_config = get_config(args.env, 'envs')\n    agent_config = get_config(args.agent, 'agents')\n\n\n\n    if args.seed == None:\n        args.seed = np.random.randint(0, 10000)\n\n\n    if args.agent == 'tiecomm':\n        args.block = 'no'\n    elif args.agent == 'tiecomm_wo_inter':\n        args.block = 'inter'\n    elif args.agent == 'tiecomm_wo_intra':\n        args.block = 'intra'\n\n\n    torch.manual_seed(args.seed)\n    random.seed(args.seed)\n    np.random.seed(args.seed)\n    env_config['seed'] = args.seed\n\n    #update configs\n    exp_config = recursive_dict_update(default_config,vars(args))\n    env_config = recursive_dict_update(env_config, vars(args))\n    agent_config = recursive_dict_update(agent_config, vars(args))\n\n\n    #merge config\n    config = {}\n    config.update(default_config)\n    config.update(env_config)\n    config.update(agent_config)\n\n\n\n\n\n    #======================================load config==============================================\n    args = argparse.Namespace(**config)\n    args.device = \"cuda\" if args.use_cuda and torch.cuda.is_available() else \"cpu\"\n\n\n    #======================================wandb==============================================\n    results_path = os.path.join(dirname(abspath(__file__)), \"results\")\n    args.exp_id = f\"{args.env}_{args.map}_{args.agent}_{args.memo}_{args.att_head}\" #_{datetime.datetime.now().strftime('%d_%H_%M')}\"\n\n    if args.use_offline_wandb:\n        os.environ['WANDB_MODE'] = 'dryrun'\n\n    tags = ['Ming', args.env, args.map, args.agent, args.memo]\n\n    wandb.init(project='JAMMAS', name=args.exp_id, tags=tags, dir=results_path, entity=\"mingatum\")\n    wandb.config.update(args)\n\n\n    #======================================register environment==============================================\n    env = env_REGISTRY[args.env](env_config)\n\n    env_info = env.get_env_info()\n    agent_config['obs_shape'] = env_info[\"obs_shape\"]\n    agent_config['n_actions'] = env_info[\"n_actions\"]\n    agent_config['n_agents'] = env_info[\"n_agents\"]\n    exp_config['episode_length'] = env_info[\"episode_length\"]\n    exp_config['n_agents'] = env_info[\"n_agents\"]\n    exp_config['n_actions'] = env_info[\"n_actions\"]\n\n    agent = agent_REGISTRY[args.agent](agent_config)\n    if args.agent=='ic3net':\n        exp_config['hard_attn']=True\n        exp_config['commnet']=True\n        exp_config['detach_gap'] = 10\n        exp_config['comm_action_one'] = True\n    elif args.agent=='commnet':\n        exp_config['hard_attn']=False\n        exp_config['commnet']=True\n        exp_config['detach_gap'] = 10\n    elif args.agent=='tarmac':\n        exp_config['hard_attn']=False\n        exp_config['commnet']=True\n        exp_config['detach_gap'] = 10\n    elif args.agent=='magic':\n        exp_config['hard_attn']=False\n        exp_config['hid_size']=64\n        exp_config['detach_gap'] = 10\n\n    elif args.agent in ['ac_att', 'ac_att_noise']:\n        exp_config['att_head']=args.att_head\n        exp_config['hid_size']=args.hid_size\n    # elif args.agent in ['tiecomm','tiecomm_g','tiecomm_random','tiecomm_default']:\n    #     exp_config['interval']= agent_config['group_interval']\n    else:\n        pass\n\n\n    #wandb.watch(agent)\n\n    epoch_size = exp_config['epoch_size']\n    batch_size = exp_config['batch_size']\n    run = runner_REGISTRY[args.agent]\n    if args.use_multiprocessing:\n        for p in agent.parameters():\n            p.data.share_memory_()\n        runner = MultiPeocessRunner(exp_config, lambda: run(exp_config, env, agent))\n    else:\n        runner = run(exp_config, env, agent)\n\n\n    total_num_episodes = 0\n    total_num_steps = 0\n\n    for epoch in range(1, args.total_epoches+1):\n        epoch_begin_time = time.time()\n\n        log = {}\n        for i in range(epoch_size):\n            batch_log = runner.train_batch(batch_size)\n            merge_dict(batch_log, log)\n            #print(i,batch_log['success'])\n\n        total_num_episodes += log['num_episodes']\n        total_num_steps += log['num_steps']\n\n        #print('episode_return',(log['episode_return']/log['num_episodes']))\n\n        epoch_time = time.time() - epoch_begin_time\n        wandb.log({'epoch': epoch,\n                   'episode': total_num_episodes,\n                   'epoch_time': epoch_time,\n                   'total_steps': total_num_steps,\n                   'episode_return': log['episode_return']/log['num_episodes'],\n                   \"episode_steps\": np.mean(log['episode_steps']),\n                   'action_loss': log['action_loss'],\n                   'value_loss': log['value_loss'],\n                   'total_loss': log['total_loss'],\n                   })\n\n        if args.agent in ['tiecomm', 'tiecomm_wo_inter', 'tiecomm_wo_intra']:\n            wandb.log({'epoch': epoch,\n                    #'episode': total_num_episodes,\n                    'god_action_loss': log['god_action_loss'],\n                    'god_value_loss': log['god_value_loss'],\n                    'god_total_loss': log['god_total_loss'],\n                    'num_groups': log['num_groups']/log['num_episodes'],\n                    })\n\n        if args.agent =='tiecomm_default':\n            wandb.log({'epoch': epoch,\n                    'num_groups': log['num_groups']/log['num_episodes'],\n                    })\n\n\n        if args.env == 'lbf':\n            wandb.log({'epoch': epoch,\n                       'episode': total_num_episodes,\n                       'num_collisions':log['num_collisions']/log['num_episodes'],\n                       })\n\n\n        print('current epoch: {}/{}'.format(epoch, args.total_epoches))\n\n\n\n    if sys.flags.interactive == 0 and args.use_multiprocessing:\n        runner.quit()\n\n    print(\"=====Done!!!=====\")\n\n\n\nif __name__ == '__main__':\n    parser = argparse.ArgumentParser(description='HierComm')\n    parser.add_argument('--memo', type=str, default=\"JAMMAS\", help='memo name')\n    parser.add_argument('--env', type=str, default=\"mpe\", help='environment name',\n                        choices=['mpe','lbf','rware','tj'])\n    parser.add_argument('--map', type=str, default=\"mpe-large-spread-v1\", help='environment map name',\n                        choices=['easy','medium','hard','mpe-large-spread-v2','mpe-large-spread-v1','Foraging-easy-v0','Foraging-medium-v0','Foraging-hard-v0'])\n    parser.add_argument('--time_limit', type=int, default=50, help='time limit')\n    parser.add_argument('--agent', type=str, default=\"ac_att_noise\", help='algorithm name',\n                        choices=['tiecomm','tiecomm_wo_inter','tiecomm_wo_intra','tiecomm_default','ac_att','ac_att_noise','ac_mlp','gnn','commnet','ic3net','tarmac','magic'])\n    # parser.add_argument('--block', type=str, default='no',choices=['no','inter','intra'], help='only works for tiecomm')\n    parser.add_argument('--seed', type=int, default=1234, help='random seed')\n    parser.add_argument('--use_offline_wandb', action='store_true', help='use offline wandb')\n    parser.add_argument('--use_multiprocessing', action='store_true', help='use multiprocessing')\n    parser.add_argument('--batch_size', type=int, default=500, help='batch size')\n    parser.add_argument('--total_epoches', type=int, default=1500, help='total number of training epochs')\n    parser.add_argument('--n_processes', type=int, default=6, help='number of processes')\n\n    parser.add_argument('--att_head', type=int, default=1, help='number of attention heads')\n    parser.add_argument('--hid_size', type=int, default=72, help='hidden size')\n\n    args = parser.parse_args()\n\n    training_begin_time = time.time()\n    signal.signal(signal.SIGINT, signal_handler)\n    main(args)\n    training_time = time.time() - training_begin_time\n    print('training time: {} h'.format(training_time/3600))\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/main.py b/main.py
+--- a/main.py	(revision adae843540307cfcffbea284f0c80908c89157e0)
++++ b/main.py	(date 1693411242349)
+@@ -197,8 +197,8 @@
+     parser.add_argument('--map', type=str, default="mpe-large-spread-v1", help='environment map name',
+                         choices=['easy','medium','hard','mpe-large-spread-v2','mpe-large-spread-v1','Foraging-easy-v0','Foraging-medium-v0','Foraging-hard-v0'])
+     parser.add_argument('--time_limit', type=int, default=50, help='time limit')
+-    parser.add_argument('--agent', type=str, default="ac_att_noise", help='algorithm name',
+-                        choices=['tiecomm','tiecomm_wo_inter','tiecomm_wo_intra','tiecomm_default','ac_att','ac_att_noise','ac_mlp','gnn','commnet','ic3net','tarmac','magic'])
++    parser.add_argument('--agent', type=str, default="hiercomm", help='algorithm name',
++                        choices=['hiercomm','tiecomm','tiecomm_wo_inter','tiecomm_wo_intra','tiecomm_default','ac_att','ac_att_noise','ac_mlp','gnn','commnet','ic3net','tarmac','magic'])
+     # parser.add_argument('--block', type=str, default='no',choices=['no','inter','intra'], help='only works for tiecomm')
+     parser.add_argument('--seed', type=int, default=1234, help='random seed')
+     parser.add_argument('--use_offline_wandb', action='store_true', help='use offline wandb')
+Index: .idea/vcs.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/vcs.xml b/.idea/vcs.xml
+new file mode 100644
+--- /dev/null	(date 1693402002405)
++++ b/.idea/vcs.xml	(date 1693402002405)
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="VcsDirectoryMappings">
++    <mapping directory="$PROJECT_DIR$" vcs="Git" />
++  </component>
++</project>
+\ No newline at end of file
+Index: .idea/misc.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/misc.xml b/.idea/misc.xml
+new file mode 100644
+--- /dev/null	(date 1693402002407)
++++ b/.idea/misc.xml	(date 1693402002407)
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="ProjectRootManager" version="2" project-jdk-name="tie" project-jdk-type="Python SDK" />
++</project>
+\ No newline at end of file
+Index: .idea/inspectionProfiles/profiles_settings.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/inspectionProfiles/profiles_settings.xml b/.idea/inspectionProfiles/profiles_settings.xml
+new file mode 100644
+--- /dev/null	(date 1693402002412)
++++ b/.idea/inspectionProfiles/profiles_settings.xml	(date 1693402002412)
+@@ -0,0 +1,6 @@
++<component name="InspectionProjectProfileManager">
++  <settings>
++    <option name="USE_PROJECT_PROFILE" value="false" />
++    <version value="1.0" />
++  </settings>
++</component>
+\ No newline at end of file
+Index: configs/agents/hiercomm.yaml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/configs/agents/hiercomm.yaml b/configs/agents/hiercomm.yaml
+new file mode 100644
+--- /dev/null	(date 1693411674134)
++++ b/configs/agents/hiercomm.yaml	(date 1693411674134)
+@@ -0,0 +1,18 @@
++name: "Hiercomm"
++hid_size: 64
++block: 'no'
++time_interval: 1
++att_head: 1
++
++
++
++
++
++
++
++
++
++
++
++
++
