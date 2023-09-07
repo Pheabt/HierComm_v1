@@ -129,8 +129,9 @@ class Scenario(BaseScenario):
   
         if agent.collide:
             for a in world.agents:
-                if self.is_collision(a, agent):
-                    rew -= 5
+                if a.act:
+                    if self.is_collision(a, agent):
+                        rew -= 5
 
         # if self.cooperative:
         #     return 0
@@ -164,7 +165,7 @@ class Scenario(BaseScenario):
         if agent.act:
                 x = np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + [agent.group_one_hot])
         else:
-                x = np.concatenate([np.zeros_like(agent.state.p_vel)] + [np.zeros_like(agent.state.p_pos)] + [agent.group_one_hot])
+                x = np.concatenate([np.zeros_like(agent.state.p_vel)] + [np.zeros_like(agent.state.p_pos)])
 
         if self.shuffle_obs:
             x = list(x)
