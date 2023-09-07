@@ -4,8 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="newalgo">
+    <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="newalgo1">
+      <change afterPath="$PROJECT_DIR$/configs/agents/hiercomm_basic.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/configs/agents/hiercomm_structure.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runner/runner_hiercomm_default.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runner/runner_hiercomm_structure.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/baselines/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/baselines/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runner/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/__init__.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -19,7 +26,9 @@
   &quot;associatedIndex&quot;: 0
 }</component>
   <component name="ProjectId" id="2UhbK2Cs2In7kwtMk1iSAvcqYXj" />
-  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -43,6 +52,7 @@
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/configs/agents" />
+      <recent name="$PROJECT_DIR$/runner" />
     </key>
   </component>
   <component name="RunManager">
@@ -81,7 +91,7 @@
       <workItem from="1693394693569" duration="1228000" />
       <workItem from="1693401802458" duration="13804000" />
       <workItem from="1693709144544" duration="1280000" />
-      <workItem from="1693925222194" duration="2539000" />
+      <workItem from="1693925222194" duration="7236000" />
     </task>
     <task id="LOCAL-00001" summary="newalgo">
       <option name="closed" value="true" />
@@ -107,7 +117,15 @@
       <option name="project" value="LOCAL" />
       <updated>1693926710960</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="newalgo1">
+      <option name="closed" value="true" />
+      <created>1693965638151</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1693965638151</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -115,9 +133,10 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="newalgo" />
-    <option name="LAST_COMMIT_MESSAGE" value="newalgo" />
+    <MESSAGE value="newalgo1" />
+    <option name="LAST_COMMIT_MESSAGE" value="newalgo1" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/HierComm$main.coverage" NAME="main Coverage Results" MODIFIED="1693926207687" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/HierComm$main.coverage" NAME="main Coverage Results" MODIFIED="1694106189568" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
   </component>
 </project>

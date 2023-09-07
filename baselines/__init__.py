@@ -1,10 +1,12 @@
 from .tiecomm import TieCommAgent
-from .hiercomm import HierCommAgent
+
 from .commnet import CommNetAgent
 from .tarmac import TarCommAgent
 from .magic import MAGICAgent
 # from .gacomm import GACommAgent
 from .models import MLP, Attention,GNN, Attention_Noise
+
+from .hiercomm import HierCommAgent
 
 
 REGISTRY = {}
@@ -16,8 +18,8 @@ REGISTRY["tiecomm_wo_inter"] = TieCommAgent
 REGISTRY["tiecomm_wo_intra"] = TieCommAgent
 
 REGISTRY["hiercomm"] = HierCommAgent
-
-
+REGISTRY["hiercomm_basic"] = HierCommAgent
+REGISTRY["hiercomm_structure"] = HierCommAgent
 
 
 REGISTRY["commnet"] = CommNetAgent
