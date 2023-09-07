@@ -126,7 +126,7 @@ class Scenario(BaseScenario):
         #     if landmark_index == world.landmarks[i].id:
         #         rew -= np.sqrt(np.sum(np.square(a.state.p_pos - world.landmarks[i].state.p_pos)))
 
-
+  
         if agent.collide:
             for a in world.agents:
                 if self.is_collision(a, agent):
@@ -160,7 +160,12 @@ class Scenario(BaseScenario):
                 entity_pos.append(np.array(related_pos))
             else:
                 entity_pos.append(np.array([20,20]))
-        x = np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + [agent.group_one_hot])
+
+        if agent.act:
+                x = np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + [agent.group_one_hot])
+        else:
+                x = np.concatenate([np.zeros_like(agent.state.p_vel)] + [np.zeros_like(agent.state.p_pos)] + [agent.group_one_hot])
+
         if self.shuffle_obs:
             x = list(x)
             random.Random(self.group_indices[world.agents.index(agent)]).shuffle(x)
