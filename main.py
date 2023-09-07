@@ -64,7 +64,7 @@ def main(args):
 
     #======================================wandb==============================================
     results_path = os.path.join(dirname(abspath(__file__)), "results")
-    args.exp_id = f"{args.env}_{args.map}_{args.agent}_{args.memo}_{args.att_head}" #_{datetime.datetime.now().strftime('%d_%H_%M')}"
+    args.exp_id = f"{args.env}_{args.map}_{args.agent}_{args.memo}_{args.att_head}_{args.note}" #_{datetime.datetime.now().strftime('%d_%H_%M')}"
 
     if args.use_offline_wandb:
         os.environ['WANDB_MODE'] = 'dryrun'
@@ -209,7 +209,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--att_head', type=int, default=1, help='number of attention heads')
     parser.add_argument('--hid_size', type=int, default=72, help='hidden size')
-
+    parser.add_argument('--note', type=str, default="note", help='note')
 
     args = parser.parse_args()
 
