@@ -86,9 +86,13 @@ class Attention_Noise(nn.Module):
 
         x = self.tanh(self.affine1(x))
         xx = x[:6, :].unsqueeze(0)
-        h, _ = self.attn(xx,xx,xx)
-        h = torch.cat([xx.squeeze(0),h.squeeze(0)], dim=0)
-        xh = torch.cat([x.squeeze(0),h.squeeze(0)], dim=-1)
+        h, _ = self.attn(xx, xx, xx)
+        
+        h_expanded = torch.zeros_like(x) 
+        h_expanded[:6, :] = h.squeeze(0) 
+
+        xh = torch.cat([x, h_expanded], dim=-1)
+
         z = self.tanh(self.affine2(xh))
         a = F.log_softmax(self.head(z), dim=-1)
         v = self.value_head(z)
