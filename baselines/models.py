@@ -37,9 +37,9 @@ class MLP(nn.Module):
 
 
 
-class Attention(nn.Module):
+class Attention_Noise(nn.Module):
     def __init__(self, agent_config):
-        super(Attention, self).__init__()
+        super(Attention_Noise, self).__init__()
         self.args = argparse.Namespace(**agent_config)
         self.att_head = self.args.att_head
         self.hid_size = self.args.hid_size
@@ -64,9 +64,9 @@ class Attention(nn.Module):
         v = self.value_head(z)
         return a, v
 
-class Attention_Noise(nn.Module):
+class Attention(nn.Module):
     def __init__(self, agent_config):
-        super(Attention_Noise, self).__init__()
+        super(Attention, self).__init__()
         self.args = argparse.Namespace(**agent_config)
         self.att_head = self.args.att_head
         self.hid_size = self.args.hid_size
