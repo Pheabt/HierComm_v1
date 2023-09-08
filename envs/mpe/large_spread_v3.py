@@ -9,7 +9,7 @@ class raw_env(SimpleEnv):
             0.0 <= local_ratio <= 1.0
         ), "local_ratio is a proportion. Must be between 0 and 1."
         scenario = Scenario()
-        world = scenario.make_world(groups=[3, 3, 3])
+        world = scenario.make_world(groups=[3, 3, 6])
         super().__init__(scenario, world, max_frames, local_ratio)
 
 
