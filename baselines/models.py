@@ -37,7 +37,7 @@ class Attention_Noise(nn.Module):
     def __init__(self, agent_config):
         super(Attention_Noise, self).__init__()
         self.args = argparse.Namespace(**agent_config)
-        a = self.args.groups
+        self.group = self.args.groups
         self.att_head = self.args.att_head
         self.hid_size = self.args.hid_size
         self.obs_shape = self.args.obs_shape
@@ -53,17 +53,17 @@ class Attention_Noise(nn.Module):
 
 
     def forward(self, x, info={}):
-
+        group = self.group
         x = self.tanh(self.affine1(x))
-        x_A, x_B, x_C = x[:3,:].unsqueeze(0), x[3:6,:].unsqueeze(0), x[6:,].unsqueeze(0)
+        x_A, x_B, x_C = x[:group[0],:].unsqueeze(0), x[group[0]:group[0]+group[1],:].unsqueeze(0), x[group[0]+group[1]:,].unsqueeze(0)
         h_A, _ = self.attn(x_A, x_B, x_B)
         h_B, _ = self.attn(x_B, x_C, x_C)
         h_C, _ = self.attn(x_C, x_A, x_A)
 
         h_expended = torch.zeros_like(x)
-        h_expended[ :3,:] = h_A.squeeze(0)
-        h_expended[3:6,:] = h_B.squeeze(0)
-        h_expended[ 6:,:] = h_C.squeeze(0)
+        h_expended[:group[0],:] = h_A.squeeze(0)
+        h_expended[group[0]:group[0]+group[1],:] = h_B.squeeze(0)
+        h_expended[group[0]+group[1]:,:] = h_C.squeeze(0)
 
         xh = torch.cat([x, h_expended], dim=-1)
 
