@@ -18,8 +18,8 @@ REGISTRY["tiecomm_wo_inter"] = TieCommAgent
 REGISTRY["tiecomm_wo_intra"] = TieCommAgent
 
 REGISTRY["hiercomm"] = HierCommAgent
-REGISTRY["hiercomm_basic"] = HierCommAgent
-REGISTRY["hiercomm_structure"] = HierCommAgent
+REGISTRY["hiercomm_random"] = HierCommAgent
+REGISTRY["hiercomm_competition"] = HierCommAgent
 
 
 REGISTRY["commnet"] = CommNetAgent

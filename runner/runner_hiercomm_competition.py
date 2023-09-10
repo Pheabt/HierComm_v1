@@ -13,7 +13,7 @@ import argparse
 Transition = namedtuple('Transition', ('action_outs', 'actions', 'rewards', 'values', 'episode_masks', 'episode_agent_masks'))
 
 
-class RunnerHiercommStructure(Runner):
+class RunnerHiercommCompetition(Runner):
     def __init__(self, config, env, agent):
         super().__init__(config, env, agent)
 

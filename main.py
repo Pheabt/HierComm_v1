@@ -109,7 +109,7 @@ def main(args):
         exp_config['hid_size']=args.hid_size
     elif args.agent in ['tiecomm','tiecomm_g','tiecomm_random','tiecomm_default']:
         exp_config['interval']= agent_config['group_interval']
-    elif args.agent in ['hiercomm','hiercomm_basic','hiercomm_structure']:
+    elif args.agent in ['hiercomm','hiercomm_random','hiercomm_competition']:
         pass
     else:
         pass
@@ -202,8 +202,8 @@ if __name__ == '__main__':
 
 
     parser.add_argument('--time_limit', type=int, default=50, help='time limit')
-    parser.add_argument('--agent', type=str, default="ac_att_noise", help='algorithm name',
-                        choices=['hiercomm','hiercomm_basic','hiercomm_structure','tiecomm','tiecomm_wo_inter','tiecomm_wo_intra','tiecomm_default','ac_att','ac_att_noise','ac_mlp','gnn','commnet','ic3net','tarmac','magic'])
+    parser.add_argument('--agent', type=str, default="hiercomm_random", help='algorithm name',
+                        choices=['hiercomm','hiercomm_random','hiercomm_competition','tiecomm','tiecomm_wo_inter','tiecomm_wo_intra','tiecomm_default','ac_att','ac_att_noise','ac_mlp','gnn','commnet','ic3net','tarmac','magic'])
     # parser.add_argument('--block', type=str, default='no',choices=['no','inter','intra'], help='only works for tiecomm')
     parser.add_argument('--seed', type=int, default=1234, help='random seed')
     parser.add_argument('--use_offline_wandb', action='store_true', help='use offline wandb')
