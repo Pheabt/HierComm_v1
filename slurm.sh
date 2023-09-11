@@ -3,12 +3,17 @@
 #SBATCH --output=output.log
 #SBATCH --error=error.log
 #SBATCH --partition=cpu_batch 
-#SBATCH --nodes=2
-#SBATCH --cpus-per-task=6
-#SBATCH -n 48
-
 
 source /home/iotsc_g4/app/miniconda3/bin/activate tie
 cd /home/iotsc_g4/aaa/HierComm
-sh run_mpe.sh
 
+srun python main.py --agent  ac_mlp             --use_multiprocessing &
+srun python main.py --agent  ac_att             --use_multiprocessing &
+srun python main.py --agent  tiecomm            --use_multiprocessing &
+srun python main.py --agent  magic              --use_multiprocessing &
+srun python main.py --agent  commnet            --use_multiprocessing &
+srun python main.py --agent  ic3net             --use_multiprocessing &
+srun python main.py --agent  tarmac             --use_multiprocessing &
+srun python main.py --agent  hiercomm_random    --use_multiprocessing &
+
+wait 
