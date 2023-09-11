@@ -210,3 +210,20 @@ class Runner(object):
 
     def save_model(self):
         return self.agent.save_model()
+
+
+    def matrix_to_set(self, matrix):
+        # cmatrix is a soft clustering matrix
+        # return a list of sets
+
+        sets = [[] for _ in range(self.n_agents)]
+
+        for index, group in enumerate(matrix[0]):
+            sets[group].append(index)
+
+        # remove empty sets
+        sets = [s for s in sets if s != []]
+
+        return sets
+
+

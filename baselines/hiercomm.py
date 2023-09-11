@@ -31,27 +31,6 @@ class HierCommAgent(nn.Module):
         self.block = self.args.block
 
 
-    def agent_clustering(self, obs):
-        cmatrix = self.clustering(obs)
-        return cmatrix
-
-
-    def cmatrix_to_set(self, cmatrix):
-        # cmatrix is a soft clustering matrix
-        # return a list of sets
-
-        sets = [[] for _ in range(self.n_agents)]
-
-        for i in range(self.n_agents):
-            #max_index = torch.argmax(cmatrix[i,:])
-            # sample based on prob
-            index = torch.multinomial(cmatrix[i,:], 1).item()
-            sets[index].append(i)
-
-        # remove empty sets
-        sets = [s for s in sets if s != []]
-
-        return sets
 
     def communicate(self, local_obs, sets):
         local_obs = self.tie.local_emb(local_obs)
@@ -202,7 +181,8 @@ class clustering(nn.Module):
         self.fc1 = nn.Linear(self.args.obs_shape, self.hid_size)
         self.attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
         self.fc2 = nn.Linear(self.hid_size * 2, self.hid_size)
-        self.head = nn.Linear(self.hid_size , self.n_agents)
+        self.action_head = nn.Linear(self.hid_size, self.n_agents)
+        self.value_head = nn.Linear(self.hid_size , 1)
 
 
 
@@ -210,11 +190,10 @@ class clustering(nn.Module):
 
         x = self.tanh(self.fc1(x)).unsqueeze(0)
         h, _ = self.attn(x,x,x)
-
         xh = torch.cat([x.squeeze(0),h.squeeze(0)], dim=-1)
-
         z = self.tanh(self.fc2(xh))
-        cmatrix = F.softmax(self.head(z), dim=-1)
+        a = F.log_softmax(self.action_head(z), dim=-1)
+        v = self.value_head(z)
 
-        return cmatrix
+        return a, v
 

@@ -11,7 +11,7 @@ from runner import Runner
 import argparse
 
 Transition = namedtuple('Transition', ('action_outs', 'actions', 'rewards', 'values', 'episode_masks', 'episode_agent_masks'))
-
+Tie_Transition = namedtuple('Tie_Transition', ('team_action_outs', 'team_actions', 'global_reward', 'global_value', 'episode_masks',))
 
 class RunnerHiercommCooperation(Runner):
     def __init__(self, config, env, agent):
@@ -19,42 +19,82 @@ class RunnerHiercommCooperation(Runner):
 
 
         self.optimizer_agent_ac = RMSprop(self.agent.agent.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
+        self.optimizer_tie_ac = RMSprop(self.agent.tie.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
+
 
         self.n_nodes = int(self.n_agents * (self.n_agents - 1) / 2)
         self.interval = self.args.interval
 
 
 
-
-    def random_god_action(self):
-        return [np.array(random.randint(1, 10)).reshape(1)]
-
-
     def optimizer_zero_grad(self):
         self.optimizer_agent_ac.zero_grad()
+        self.optimizer_tie_ac.zero_grad()
 
 
     def optimizer_step(self):
         self.optimizer_agent_ac.step()
+        self.optimizer_tie_ac.step()
+
+
+    def compute_grad(self, batch):
+        log=dict()
+        agent_log = self.compute_agent_grad(batch[0])
+        tie_log = self.compute_tie_grad(batch[1])
+
+        merge_dict(agent_log, log)
+        merge_dict(tie_log, log)
+        return log
 
 
 
-    def collect_batch_data(self, batch_size):
-        batch_data = []
-        batch_log = dict()
-        num_episodes = 0
 
-        while len(batch_data) < batch_size:
-            episode_data, episode_log = self.run_an_episode()
-            batch_data += episode_data
-            merge_dict(episode_log, batch_log)
-            num_episodes += 1
+    def compute_tie_grad(self, batch):
 
-        batch_log['num_episodes'] = num_episodes
-        batch_log['num_steps'] = len(batch_data)
-        batch_data = Transition(*zip(*batch_data))
+            log = dict()
+            batch_size = len(batch.global_value)
+            n = 1
 
-        return batch_data, batch_log
+            rewards = torch.Tensor(np.array(batch.global_reward))
+            actions = torch.Tensor(np.array(batch.team_actions))
+            actions = actions.transpose(1, 2).view(-1, n, 1)
+
+            episode_masks = torch.Tensor(np.array(batch.episode_masks))
+
+            values = torch.cat(batch.global_value, dim=0)
+            action_outs = torch.stack(batch.team_action_outs, dim=0)
+
+            returns = torch.Tensor(batch_size, n)
+            advantages = torch.Tensor(batch_size, n)
+            values = values.view(batch_size, n)
+            prev_returns = 0
+
+            for i in reversed(range(batch_size)):
+                returns[i] = rewards[i] + self.args.gamma * prev_returns * episode_masks[i]
+                prev_returns = returns[i].clone()
+
+            for i in reversed(range(batch_size)):
+                advantages[i] = returns[i] - values.data[i]
+
+            if self.args.normalize_rewards:
+                advantages = (advantages - advantages.mean()) / advantages.std()
+
+            log_p_a = [action_outs.view(-1, 10)]
+            actions = actions.contiguous().view(-1, 1)
+            log_prob = multinomials_log_density(actions, log_p_a)
+            action_loss = -advantages.view(-1) * log_prob.squeeze()
+            actor_loss = action_loss.sum()
+
+            targets = returns
+            value_loss = (values - targets).pow(2).view(-1)
+            critic_loss = value_loss.sum()
+
+            total_loss = actor_loss + self.args.value_coeff * critic_loss
+            total_loss.backward()
+
+            log['team_action_loss'] = actor_loss.item()
+            log['team_value_loss'] = critic_loss.item()
+            log['team_total_loss'] = total_loss.item()
 
 
 
@@ -72,23 +112,44 @@ class RunnerHiercommCooperation(Runner):
 
 
 
+    def collect_batch_data(self, batch_size):
+        batch_data = []
+        tie_batch_data = []
+        batch_log = dict()
+        num_episodes = 0
+
+        while len(batch_data) < batch_size:
+            episode_data,episode_log = self.run_an_episode()
+            batch_data += episode_data[0]
+            tie_batch_data += episode_data[1]
+            merge_dict(episode_log, batch_log)
+            num_episodes += 1
+
+        batch_data = Transition(*zip(*batch_data))
+        tie_batch_data = Tie_Transition(*zip(*tie_batch_data))
+        batch_data = [batch_data, tie_batch_data]
+        batch_log['num_episodes'] = num_episodes
+        batch_log['num_steps'] = len(batch_data[0].actions)
+
+        return batch_data, batch_log
 
     def run_an_episode(self):
 
         log = dict()
 
         memory = []
+        tie_memory = []
 
         self.reset()
         obs = self.env.get_obs()
 
         obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
-        cmatrix = self.agent.agent_clustering(obs_tensor)
-        sets = self.agent.cmatrix_to_set(cmatrix)
+        team_action_out, team_value = self.agent.agent_clustering(obs_tensor)
+        team_action = self.choose_action(team_action_out)
 
-        god_reward_list = []
-        god_reward = np.zeros(1)
+        rewards_list = []
+        global_reward = np.zeros(1)
 
         step = 1
         num_group = 0
@@ -100,19 +161,20 @@ class RunnerHiercommCooperation(Runner):
             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
             if step % self.interval == 0:
-                cmatrix = self.agent.agent_clustering(obs_tensor)
-                sets = self.agent.cmatrix_to_set(cmatrix)
+                team_action_out, team_value = self.agent.agent_clustering(obs_tensor)
+                team_action = self.choose_action(team_action_out)
 
+            sets = self.matrix_to_set(team_action)
             after_comm = self.agent.communicate(obs_tensor, sets)
             action_outs, values = self.agent.agent(after_comm)
             actions = self.choose_action(action_outs)
             rewards, done, env_info = self.env.step(actions)
 
-            god_reward_list.append(np.mean(rewards).reshape(1))
+            rewards_list.append(np.mean(rewards).reshape(1))
 
             if step % self.interval == 0:
-                god_reward = np.mean(god_reward_list).reshape(1)
-                god_reward_list = []
+                global_reward = np.mean(rewards_list).reshape(1)
+                global_reward = []
 
             next_obs = self.env.get_obs()
 
@@ -120,19 +182,19 @@ class RunnerHiercommCooperation(Runner):
 
             episode_mask = np.ones(rewards.shape)
             episode_agent_mask = np.ones(rewards.shape)
-            god_episode_mask = np.ones(1)
+            global_episode_mask = np.ones(1)
             if done:
                 episode_mask = np.zeros(rewards.shape)
-                god_episode_mask = np.zeros(1)
+                global_episode_mask = np.zeros(1)
             elif 'completed_agent' in env_info:
                 episode_agent_mask = 1 - np.array(env_info['completed_agent']).reshape(-1)
 
             trans = Transition(action_outs, actions, rewards, values, episode_mask, episode_agent_mask)
             memory.append(trans)
 
-            # if step % self.interval == 0:
-            #     god_trans = God_Transition(god_action_out, god_action, god_reward, god_value, god_episode_mask)
-            #     god_memory.append(god_trans)
+            if step % self.interval == 0:
+                 tie_trans = Tie_Transition(team_action_out, team_action, global_reward, team_value, global_episode_mask)
+                 tie_memory.append(tie_trans)
 
             obs = next_obs
             episode_return += int(np.sum(rewards))
