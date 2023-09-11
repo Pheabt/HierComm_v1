@@ -182,7 +182,7 @@ class clustering(nn.Module):
         self.attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
         self.fc2 = nn.Linear(self.hid_size * 2, self.hid_size)
         self.action_head = nn.Linear(self.hid_size, self.n_agents)
-        self.value_head = nn.Linear(self.hid_size , 1)
+        self.value_head = nn.Linear(self.hid_size * self.n_agents , 1)
 
 
 
@@ -193,7 +193,6 @@ class clustering(nn.Module):
         xh = torch.cat([x.squeeze(0),h.squeeze(0)], dim=-1)
         z = self.tanh(self.fc2(xh))
         a = F.log_softmax(self.action_head(z), dim=-1)
-        v = self.value_head(z)
-
+        v = self.value_head(z.reshape(-1, self.n_agents * self.hid_size))
         return a, v
 

@@ -44,6 +44,9 @@ class RunnerHiercommRandom(Runner):
         self.optimizer_step()
         return train_log
 
+
+
+
     def run_an_episode(self):
 
         log = dict()
