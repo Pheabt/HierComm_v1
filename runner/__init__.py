@@ -14,6 +14,7 @@ from .runner_default import RunnerDefualt
 from .runner_hiercomm import RunnerHiercomm
 from .runner_hiercomm_random import RunnerHiercommRandom
 from .runner_hiercomm_competition import RunnerHiercommCompetition
+from .runner_hiercomm_cooperation import RunnerHiercommCooperation
 
 
 
@@ -36,6 +37,7 @@ REGISTRY["tiecomm_wo_intra"] = RunnerTiecomm
 REGISTRY["hiercomm"] = RunnerHiercomm
 REGISTRY["hiercomm_random"] = RunnerHiercommRandom
 REGISTRY["hiercomm_competition"] = RunnerHiercommCompetition
+REGISTRY["hiercomm_cooperation"] = RunnerHiercommCooperation
 
 
 
