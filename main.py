@@ -193,7 +193,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='HierComm')
     parser.add_argument('--memo', type=str, default="JAMMAS", help='memo name')
-    parser.add_argument('--use_cuda',tpye=bool, default=False, help='use cuda')
+    parser.add_argument('--use_cuda',type=bool, default=False, help='use cuda')
     parser.add_argument('--env', type=str, default="mpe", help='environment name',
                         choices=['mpe','lbf','rware','tj'])
     parser.add_argument('--map', type=str, default="mpe-large-spread-v1", help='environment map name',
@@ -213,7 +213,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_offline_wandb', action='store_true', help='use offline wandb')
     parser.add_argument('--use_multiprocessing', action='store_true', help='use multiprocessing')
     parser.add_argument('--batch_size', type=int, default=500, help='batch size')
-    parser.add_argument('--total_epoches', type=int, default=2000, help='total number of training epochs')
+    parser.add_argument('--total_epoches', type=int, default=1000, help='total number of training epochs')
     parser.add_argument('--n_processes', type=int, default=6, help='number of processes')
 
     parser.add_argument('--att_head', type=int, default=1, help='number of attention heads')
