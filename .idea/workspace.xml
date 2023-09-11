@@ -6,10 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="hiercomm random ready">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/baselines/hiercomm.py" beforeDir="false" afterPath="$PROJECT_DIR$/baselines/hiercomm.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm_cooperation.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm_cooperation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm_random.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm_random.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -89,7 +85,7 @@
       <workItem from="1693401802458" duration="13804000" />
       <workItem from="1693709144544" duration="1280000" />
       <workItem from="1693925222194" duration="22697000" />
-      <workItem from="1694419900006" duration="4302000" />
+      <workItem from="1694419900006" duration="5086000" />
     </task>
     <task id="LOCAL-00001" summary="newalgo">
       <option name="closed" value="true" />
@@ -163,7 +159,15 @@
       <option name="project" value="LOCAL" />
       <updated>1694417127254</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="hiercomm random ready">
+      <option name="closed" value="true" />
+      <created>1694424830782</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1694424830782</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
