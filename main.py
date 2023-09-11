@@ -108,7 +108,7 @@ def main(args):
         exp_config['att_head']=args.att_head
         exp_config['hid_size']=args.hid_size
     elif args.agent in ['tiecomm','tiecomm_g','tiecomm_random','tiecomm_default']:
-        exp_config['interval']= agent_config['group_interval']
+        exp_config['interval']= agent_config['time_interval']
     elif args.agent in ['hiercomm','hiercomm_random','hiercomm_competition','hiercomm_cooperation']:
         pass
     else:
@@ -202,7 +202,7 @@ if __name__ == '__main__':
 
 
     parser.add_argument('--time_limit', type=int, default=50, help='time limit')
-    parser.add_argument('--agent', type=str, default="", help='algorithm name',
+    parser.add_argument('--agent', type=str, default="tiecomm", help='algorithm name',
                         choices=['hiercomm','hiercomm_random','hiercomm_competition', 'hiercomm_cooperation',
                                  'tiecomm','tiecomm_wo_inter','tiecomm_wo_intra','tiecomm_default',
                                  'ac_att','ac_att_noise','ac_mlp','gnn',
