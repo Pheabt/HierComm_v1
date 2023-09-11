@@ -59,7 +59,7 @@ def main(args):
 
     #======================================load config==============================================
     args = argparse.Namespace(**config)
-    args.device = "cuda" if args.use_cuda and torch.cuda.is_available() else "cpu"
+    args.device = "cpu"
 
 
     #======================================wandb==============================================
@@ -193,7 +193,6 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='HierComm')
     parser.add_argument('--memo', type=str, default="JAMMAS", help='memo name')
-    parser.add_argument('--use_cuda',type=bool, default=False, help='use cuda')
     parser.add_argument('--env', type=str, default="mpe", help='environment name',
                         choices=['mpe','lbf','rware','tj'])
     parser.add_argument('--map', type=str, default="mpe-large-spread-v1", help='environment map name',
