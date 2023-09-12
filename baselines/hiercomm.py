@@ -23,10 +23,8 @@ class HierCommAgent(nn.Module):
 
         self.agent = AgentAC(self.args)
         self.tie = Tie(self.args)
-        self.clustering = clustering(self.args)
+        self.clustering = Clustering(self.args)
 
-        if hasattr(self.args, 'random_prob'):
-            self.random_prob = self.args.random_prob
 
         self.block = self.args.block
 
@@ -161,10 +159,10 @@ class AgentAC(nn.Module):
 
 
 
-class clustering(nn.Module):
+class Clustering(nn.Module):
 
     def __init__(self, args):
-        super(clustering, self).__init__()
+        super(Clustering, self).__init__()
 
         self.args = args
 

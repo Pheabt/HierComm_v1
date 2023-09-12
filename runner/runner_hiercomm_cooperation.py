@@ -19,7 +19,7 @@ class RunnerHiercommCooperation(Runner):
 
 
         self.optimizer_agent_ac = RMSprop(self.agent.agent.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
-        self.optimizer_team_ac = RMSprop(self.agent.tie.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
+        self.optimizer_team_ac = RMSprop(self.agent.clustering.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
 
 
         self.n_nodes = int(self.n_agents * (self.n_agents - 1) / 2)

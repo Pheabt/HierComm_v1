@@ -4,8 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="hiercomm random ready">
+    <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="hiercomm cooperation">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/baselines/hiercomm.py" beforeDir="false" afterPath="$PROJECT_DIR$/baselines/hiercomm.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm_competition.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm_competition.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm_cooperation.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm_cooperation.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -85,7 +89,7 @@
       <workItem from="1693401802458" duration="13804000" />
       <workItem from="1693709144544" duration="1280000" />
       <workItem from="1693925222194" duration="22697000" />
-      <workItem from="1694419900006" duration="5086000" />
+      <workItem from="1694419900006" duration="11795000" />
     </task>
     <task id="LOCAL-00001" summary="newalgo">
       <option name="closed" value="true" />
@@ -167,7 +171,15 @@
       <option name="project" value="LOCAL" />
       <updated>1694424830782</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="hiercomm cooperation">
+      <option name="closed" value="true" />
+      <created>1694426974358</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1694426974358</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -179,7 +191,8 @@
     <MESSAGE value="hiercomm basic structure" />
     <MESSAGE value="hiercomm random" />
     <MESSAGE value="hiercomm random ready" />
-    <option name="LAST_COMMIT_MESSAGE" value="hiercomm random ready" />
+    <MESSAGE value="hiercomm cooperation" />
+    <option name="LAST_COMMIT_MESSAGE" value="hiercomm cooperation" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -193,6 +206,6 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/HierComm$main.coverage" NAME="main Coverage Results" MODIFIED="1694424735702" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/HierComm$main.coverage" NAME="main Coverage Results" MODIFIED="1694512979194" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
   </component>
 </project>

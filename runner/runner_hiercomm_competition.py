@@ -10,8 +10,8 @@ from runner import Runner
 
 import argparse
 
-Transition = namedtuple('Transition', ('action_outs', 'actions', 'rewards', 'values', 'episode_masks', 'episode_agent_masks'))
-
+Transition      = namedtuple('Transition',      ('action_outs', 'actions', 'rewards', 'values', 'episode_masks', 'episode_agent_masks'))
+Team_Transition = namedtuple('Team_Transition', ('team_action_outs', 'team_actions', 'score'))
 
 class RunnerHiercommCompetition(Runner):
     def __init__(self, config, env, agent):
@@ -19,42 +19,36 @@ class RunnerHiercommCompetition(Runner):
 
 
         self.optimizer_agent_ac = RMSprop(self.agent.agent.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
+        self.optimizer_team_ac = RMSprop(self.agent.clustering.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
+
 
         self.n_nodes = int(self.n_agents * (self.n_agents - 1) / 2)
         self.interval = self.args.interval
 
 
 
-
-    def random_god_action(self):
-        return [np.array(random.randint(1, 10)).reshape(1)]
-
-
     def optimizer_zero_grad(self):
         self.optimizer_agent_ac.zero_grad()
+        self.optimizer_team_ac.zero_grad()
+
+
 
 
     def optimizer_step(self):
         self.optimizer_agent_ac.step()
+        self.optimizer_team_ac.step()
 
 
 
-    def collect_batch_data(self, batch_size):
-        batch_data = []
-        batch_log = dict()
-        num_episodes = 0
 
-        while len(batch_data) < batch_size:
-            episode_data, episode_log = self.run_an_episode()
-            batch_data += episode_data
-            merge_dict(episode_log, batch_log)
-            num_episodes += 1
+    def compute_grad(self, batch):
+        log=dict()
+        agent_log = self.compute_agent_grad(batch[0])
+        team_log = self.compute_team_grad(batch[1])
 
-        batch_log['num_episodes'] = num_episodes
-        batch_log['num_steps'] = len(batch_data)
-        batch_data = Transition(*zip(*batch_data))
-
-        return batch_data, batch_log
+        merge_dict(agent_log, log)
+        merge_dict(team_log, log)
+        return log
 
 
 
@@ -73,22 +67,49 @@ class RunnerHiercommCompetition(Runner):
 
 
 
+
+    def collect_batch_data(self, batch_size):
+        agent_batch_data = []
+        team_batch_data = []
+        batch_log = dict()
+        num_episodes = 0
+
+        while len(agent_batch_data) < batch_size:
+            episode_data,episode_log = self.run_an_episode()
+            agent_batch_data += episode_data[0]
+            team_batch_data += episode_data[1]
+            merge_dict(episode_log, batch_log)
+            num_episodes += 1
+
+        batch_data = Transition(*zip(*agent_batch_data))
+        team_batch_data = Team_Transition(*zip(*team_batch_data))
+        batch_data = [batch_data, team_batch_data]
+        batch_log['num_episodes'] = num_episodes
+        batch_log['num_steps'] = len(batch_data[0].actions)
+
+        return batch_data, batch_log
+
+
+
+
+
+
     def run_an_episode(self):
 
         log = dict()
 
         memory = []
+        team_memory = []
 
         self.reset()
         obs = self.env.get_obs()
 
         obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
-        cmatrix = self.agent.agent_clustering(obs_tensor)
-        sets = self.agent.cmatrix_to_set(cmatrix)
-
-        god_reward_list = []
-        god_reward = np.zeros(1)
+        team_action_out, team_value = self.agent.clustering(obs_tensor)
+        team_action = self.choose_action(team_action_out)
+        sets = self.matrix_to_set(team_action)
+        score = self.get_score(sets, obs_tensor)
 
         step = 1
         num_group = 0
@@ -100,19 +121,18 @@ class RunnerHiercommCompetition(Runner):
             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
             if step % self.interval == 0:
-                cmatrix = self.agent.agent_clustering(obs_tensor)
-                sets = self.agent.cmatrix_to_set(cmatrix)
+                team_action_out, team_value = self.agent.clustering(obs_tensor)
+                team_action = self.choose_action(team_action_out)
+                sets = self.matrix_to_set(team_action)
+                score = self.get_score(sets, obs_tensor)
+
+
 
             after_comm = self.agent.communicate(obs_tensor, sets)
             action_outs, values = self.agent.agent(after_comm)
             actions = self.choose_action(action_outs)
             rewards, done, env_info = self.env.step(actions)
 
-            god_reward_list.append(np.mean(rewards).reshape(1))
-
-            if step % self.interval == 0:
-                god_reward = np.mean(god_reward_list).reshape(1)
-                god_reward_list = []
 
             next_obs = self.env.get_obs()
 
@@ -120,19 +140,17 @@ class RunnerHiercommCompetition(Runner):
 
             episode_mask = np.ones(rewards.shape)
             episode_agent_mask = np.ones(rewards.shape)
-            god_episode_mask = np.ones(1)
             if done:
                 episode_mask = np.zeros(rewards.shape)
-                god_episode_mask = np.zeros(1)
             elif 'completed_agent' in env_info:
                 episode_agent_mask = 1 - np.array(env_info['completed_agent']).reshape(-1)
 
             trans = Transition(action_outs, actions, rewards, values, episode_mask, episode_agent_mask)
             memory.append(trans)
 
-            # if step % self.interval == 0:
-            #     god_trans = God_Transition(god_action_out, god_action, god_reward, god_value, god_episode_mask)
-            #     god_memory.append(god_trans)
+            if step % self.interval == 0:
+                 team_trans = Team_Transition(team_action_out, team_action, score)
+                 team_memory.append(team_trans)
 
             obs = next_obs
             episode_return += int(np.sum(rewards))
@@ -149,58 +167,78 @@ class RunnerHiercommCompetition(Runner):
         # if self.args.env == 'tj':
         #     merge_dict(self.env.get_stat(),log)
 
-        return memory, log
+        return (memory,team_memory), log
 
-    def compute_god_grad(self, batch):
+
+
+
+
+    def compute_team_grad(self, batch):
 
         log = dict()
-        batch_size = len(batch.god_value)
         n = 1
 
-        rewards = torch.Tensor(np.array(batch.god_reward))
-        actions = torch.Tensor(np.array(batch.god_action))
+        actions = torch.Tensor(np.array(batch.team_actions))
         actions = actions.transpose(1, 2).view(-1, n, 1)
+        action_outs = torch.stack(batch.team_action_outs, dim=0)
+        score = torch.Tensor(np.array(batch.score)).view(-1, 1)
 
-        episode_masks = torch.Tensor(np.array(batch.episode_masks))
 
-        values = torch.cat(batch.god_value, dim=0)
-        action_outs = torch.stack(batch.god_action_out, dim=0)
 
-        returns = torch.Tensor(batch_size, n)
-        advantages = torch.Tensor(batch_size, n)
-        values = values.view(batch_size, n)
-        prev_returns = 0
-
-        for i in reversed(range(batch_size)):
-            returns[i] = rewards[i] + self.args.gamma * prev_returns * episode_masks[i]
-            prev_returns = returns[i].clone()
-
-        for i in reversed(range(batch_size)):
-            advantages[i] = returns[i] - values.data[i]
-
-        if self.args.normalize_rewards:
-            advantages = (advantages - advantages.mean()) / advantages.std()
-
-        log_p_a = [action_outs.view(-1, 10)]
-        actions = actions.contiguous().view(-1, 1)
+        log_p_a = [action_outs.view(-1, self.n_agents)]
+        actions = actions.contiguous().view(-1, self.n_agents)
         log_prob = multinomials_log_density(actions, log_p_a)
-        action_loss = -advantages.view(-1) * log_prob.squeeze()
+
+
+        action_loss = - score.view(-1) * log_prob.squeeze()
         actor_loss = action_loss.sum()
 
-        targets = returns
-        value_loss = (values - targets).pow(2).view(-1)
-        critic_loss = value_loss.sum()
 
-        total_loss = actor_loss + self.args.value_coeff * critic_loss
+
+        total_loss = actor_loss
         total_loss.backward()
 
-        log['god_action_loss'] = actor_loss.item()
-        log['god_value_loss'] = critic_loss.item()
-        log['god_total_loss'] = total_loss.item()
-
+        log['team_action_loss'] = actor_loss.item()
+        log['team_value_loss'] = score.sum().item()
+        log['team_total_loss'] = actor_loss.item()
 
 
         return log
+
+    def get_score(self, sets, obs_tensor):
+        # Compute similarity matrix
+        matrix = self.cosine_similarity_matrix(obs_tensor)
+
+        # Convert back to numpy for the remaining operations
+        matrix = matrix.cpu().numpy()
+
+        # Compute the modularity score
+        m = np.sum(matrix) / 2.0
+        score = 0
+        for agent_set in sets:
+            k_i = np.sum(matrix[agent_set, :])
+            sum_of_edges = np.sum(matrix[np.ix_(agent_set, agent_set)])
+            score += sum_of_edges - (k_i ** 2) / (4 * m)
+
+        score = score / (2 * m)
+        return score
+
+    def cosine_similarity_matrix(self, obs):
+        """
+        obs: [n_agents, obs_dim] as a PyTorch tensor
+        Returns a matrix of size [n_agents, n_agents] with the cosine similarity between rows.
+        """
+        norm = obs.norm(p=2, dim=1, keepdim=True)
+        obs_normalized = obs.div(norm)
+
+        similarity_matrix = torch.mm(obs_normalized, obs_normalized.t())
+
+        # Set diagonal to zero
+        similarity_matrix.fill_diagonal_(0)
+
+        return similarity_matrix
+
+
 
 
 
