@@ -202,7 +202,7 @@ if __name__ == '__main__':
 
 
     parser.add_argument('--time_limit', type=int, default=50, help='time limit')
-    parser.add_argument('--agent', type=str, default="commnet", help='algorithm name',
+    parser.add_argument('--agent', type=str, default="hiercomm_competition", help='algorithm name',
                         choices=['hiercomm','hiercomm_random','hiercomm_competition', 'hiercomm_cooperation',
                                  'tiecomm','tiecomm_wo_inter','tiecomm_wo_intra','tiecomm_default',
                                  'ac_att','ac_att_noise','ac_mlp','gnn',

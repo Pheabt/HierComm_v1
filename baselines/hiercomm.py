@@ -129,6 +129,7 @@ class AgentAC(nn.Module):
         self.hid_size = args.hid_size
         self.n_actions = self.args.n_actions
         self.tanh = nn.Tanh()
+        self.att_head = self.args.att_head
 
         self.fc_1 = nn.Linear(self.hid_size * 3, self.hid_size)
         self.fc_2 = nn.Linear(self.hid_size, self.hid_size)
