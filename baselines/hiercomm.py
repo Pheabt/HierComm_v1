@@ -22,7 +22,7 @@ class HierCommAgent(nn.Module):
         self.hid_size = self.args.hid_size
 
         self.agent = AgentAC(self.args)
-        self.clustering = Clustering(self.args)
+        self.teaming = Teaming(self.args)
 
 
         self.block = self.args.block
@@ -77,52 +77,47 @@ class HierCommAgent(nn.Module):
 
 
 
-
-class Tie (nn.Module):
-    def __init__(self, args):
-        super(Tie, self).__init__()
-        self.args = args
-        self.n_agents = args.n_agents
-        self.hid_size = args.hid_size
-        self.tanh = nn.Tanh()
-        self.att_head = self.args.att_head
-
-        self.local_fc = nn.Linear(self.args.obs_shape, self.hid_size)
-
-        self.intra_attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
-
-        self.inter_attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
-        self.inter_fc2 = nn.Linear(self.hid_size * 2, self.hid_size)
-
-        self.attset_fc = nn.Linear(self.hid_size, 1)
-
-
-    def local_emb(self, input):
-        return self.tanh(self.local_fc(input))
-
-    def intra_com(self, input):
-        x = input.unsqueeze(0)
-        h, _ = self.intra_attn(x,x,x)
-        return h.squeeze(0)
-
-    def inter_com(self, input):
-        x = input.unsqueeze(0)
-        h, _ = self.inter_attn(x,x,x)
-        return h.squeeze(0)
-
-    def pooling(self, input):
-
-        #score = self.attset_fc(input)
-        score = F.softmax(self.attset_fc(input), dim=0)
-
-        #zip the input to 1 * fixed size output based on score
-        output = torch.sum(score * input, dim=0, keepdim=True)    # [1, 1, hid_size]
-        return output
-
-
-
-
-
+#
+# class Tie (nn.Module):
+#     def __init__(self, args):
+#         super(Tie, self).__init__()
+#         self.args = args
+#         self.n_agents = args.n_agents
+#         self.hid_size = args.hid_size
+#         self.tanh = nn.Tanh()
+#         self.att_head = self.args.att_head
+#
+#         self.local_fc = nn.Linear(self.args.obs_shape, self.hid_size)
+#
+#         self.intra_attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
+#
+#         self.inter_attn = nn.MultiheadAttention(self.hid_size, num_heads=self.att_head, batch_first=True)
+#         self.inter_fc2 = nn.Linear(self.hid_size * 2, self.hid_size)
+#
+#         self.attset_fc = nn.Linear(self.hid_size, 1)
+#
+#
+#     def local_emb(self, input):
+#         return self.tanh(self.local_fc(input))
+#
+#     def intra_com(self, input):
+#         x = input.unsqueeze(0)
+#         h, _ = self.intra_attn(x,x,x)
+#         return h.squeeze(0)
+#
+#     def inter_com(self, input):
+#         x = input.unsqueeze(0)
+#         h, _ = self.inter_attn(x,x,x)
+#         return h.squeeze(0)
+#
+#     def pooling(self, input):
+#
+#         #score = self.attset_fc(input)
+#         score = F.softmax(self.attset_fc(input), dim=0)
+#
+#         #zip the input to 1 * fixed size output based on score
+#         output = torch.sum(score * input, dim=0, keepdim=True)    # [1, 1, hid_size]
+#         return output
 
 
 class AgentAC(nn.Module):
@@ -194,10 +189,10 @@ class AgentAC(nn.Module):
 
 
 
-class Clustering(nn.Module):
+class Teaming(nn.Module):
 
     def __init__(self, args):
-        super(Clustering, self).__init__()
+        super(Teaming, self).__init__()
 
         self.args = args
 

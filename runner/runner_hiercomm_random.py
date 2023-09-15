@@ -58,7 +58,7 @@ class RunnerHiercommRandom(Runner):
 
         obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
-        team_action_out, team_value = self.agent.clustering(obs_tensor)
+        team_action_out, team_value = self.agent.teaming(obs_tensor)
         team_action = self.choose_action(team_action_out)
 
         step = 1
@@ -71,7 +71,7 @@ class RunnerHiercommRandom(Runner):
             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
             if step % self.interval == 0:
-                team_action_out, team_value = self.agent.clustering(obs_tensor)
+                team_action_out, team_value = self.agent.teaming(obs_tensor)
                 team_action = self.choose_action(team_action_out)
 
             sets = self.matrix_to_set(team_action)

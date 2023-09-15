@@ -5,10 +5,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="25891304-c199-40ae-9d6c-ae5645f6a6bc" name="Changes" comment="hiercomm cooperation">
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_05_09_2023,_10_48 pm_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_05_09_2023__10_48pm__Changes_.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/HierComm.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/HierComm.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/baselines/hiercomm.py" beforeDir="false" afterPath="$PROJECT_DIR$/baselines/hiercomm.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/install.sh" beforeDir="false" afterPath="$PROJECT_DIR$/install.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm_competition.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm_competition.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm_cooperation.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm_cooperation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/runner/runner_hiercomm_random.py" beforeDir="false" afterPath="$PROJECT_DIR$/runner/runner_hiercomm_random.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -16,6 +21,7 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="Git.Settings">
+    <option name="PUSH_AUTO_UPDATE" value="true" />
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="ProjectColorInfo">{
@@ -89,7 +95,7 @@
       <workItem from="1693709144544" duration="1280000" />
       <workItem from="1693925222194" duration="22697000" />
       <workItem from="1694419900006" duration="11795000" />
-      <workItem from="1694661517198" duration="1986000" />
+      <workItem from="1694661517198" duration="3455000" />
     </task>
     <task id="LOCAL-00001" summary="newalgo">
       <option name="closed" value="true" />
@@ -179,7 +185,15 @@
       <option name="project" value="LOCAL" />
       <updated>1694426974358</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="hiercomm cooperation">
+      <option name="closed" value="true" />
+      <created>1694754693331</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1694754693331</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -206,6 +220,6 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/HierComm$main.coverage" NAME="main Coverage Results" MODIFIED="1694512979194" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/HierComm$main.coverage" NAME="main Coverage Results" MODIFIED="1694755874463" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
   </component>
 </project>

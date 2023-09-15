@@ -1,4 +1,4 @@
-#!/bin/bash
+con#!/bin/bash
 # 安装软件包
 pip install numpy
 pip install gym==0.23

@@ -19,7 +19,7 @@ class RunnerHiercommCompetition(Runner):
 
 
         self.optimizer_agent_ac = RMSprop(self.agent.agent.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
-        self.optimizer_team_ac = RMSprop(self.agent.clustering.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
+        self.optimizer_team_ac = RMSprop(self.agent.teaming.parameters(), lr = self.args.lr, alpha=0.97, eps=1e-6)
 
 
         self.n_nodes = int(self.n_agents * (self.n_agents - 1) / 2)
@@ -106,7 +106,7 @@ class RunnerHiercommCompetition(Runner):
 
         obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
-        team_action_out, team_value = self.agent.clustering(obs_tensor)
+        team_action_out, team_value = self.agent.teaming(obs_tensor)
         team_action = self.choose_action(team_action_out)
         sets = self.matrix_to_set(team_action)
         score = self.get_score(sets, obs_tensor)
@@ -121,7 +121,7 @@ class RunnerHiercommCompetition(Runner):
             obs_tensor = torch.tensor(np.array(obs), dtype=torch.float)
 
             if step % self.interval == 0:
-                team_action_out, team_value = self.agent.clustering(obs_tensor)
+                team_action_out, team_value = self.agent.teaming(obs_tensor)
                 team_action = self.choose_action(team_action_out)
                 sets = self.matrix_to_set(team_action)
                 score = self.get_score(sets, obs_tensor)
